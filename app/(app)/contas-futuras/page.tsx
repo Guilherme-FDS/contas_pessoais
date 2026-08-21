@@ -1,7 +1,7 @@
 "use client";
 
 import EntityTable, { ColumnConfig, FieldConfig } from "@/components/EntityTable";
-import { formatCurrency } from "@/components/SummaryCard";
+import { formatCurrency, formatDate } from "@/components/SummaryCard";
 import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { ContaFutura } from "@/lib/types";
 
@@ -23,7 +23,7 @@ const columns: ColumnConfig<ContaFutura>[] = [
   { key: "nome", label: "Nome" },
   { key: "valor", label: "Valor", render: (item) => formatCurrency(Number(item.valor)) },
   { key: "categoria", label: "Categoria" },
-  { key: "data_prevista", label: "Data prevista", render: (item) => item.data_prevista ?? "-" },
+  { key: "data_prevista", label: "Data prevista", render: (item) => formatDate(item.data_prevista) },
   { key: "status", label: "Status" },
 ];
 

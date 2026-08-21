@@ -24,6 +24,7 @@ export interface ColumnConfig<T> {
 export interface FilterFieldConfig<T> {
   field: keyof T & string;
   label: string;
+  format?: (value: string) => string;
 }
 
 interface EntityTableProps<T extends { id: string }> {
@@ -280,7 +281,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
               <option value="">{f.label}: todas</option>
               {distinctValues(statusFiltered, f.field).map((v) => (
                 <option key={v} value={v}>
-                  {v}
+                  {f.format ? f.format(v) : v}
                 </option>
               ))}
             </select>

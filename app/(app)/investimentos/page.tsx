@@ -1,7 +1,7 @@
 "use client";
 
 import EntityTable, { ColumnConfig, FieldConfig } from "@/components/EntityTable";
-import { formatCurrency } from "@/components/SummaryCard";
+import { formatCurrency, formatDate } from "@/components/SummaryCard";
 import type { Investimento } from "@/lib/types";
 
 const fields: FieldConfig[] = [
@@ -27,7 +27,7 @@ const columns: ColumnConfig<Investimento>[] = [
     label: "Valor investido",
     render: (item) => formatCurrency(Number(item.valor_investido)),
   },
-  { key: "data_aplicacao", label: "Data" },
+  { key: "data_aplicacao", label: "Data", render: (item) => formatDate(item.data_aplicacao) },
   { key: "corretora", label: "Corretora" },
 ];
 
@@ -48,6 +48,11 @@ export default function InvestimentosPage() {
         sumLabel="Total investido"
         orderBy="data_aplicacao"
         ascending={false}
+        sortableFields={["valor_investido", "data_aplicacao"]}
+        filterFields={[
+          { field: "categoria", label: "Categoria" },
+          { field: "data_aplicacao", label: "Data", format: formatDate },
+        ]}
       />
     </div>
   );

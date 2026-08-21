@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency } from "@/components/SummaryCard";
+import { formatCurrency, formatDate } from "@/components/SummaryCard";
 import { currentMonth } from "@/components/MonthNav";
 import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { ContaFixa, ContaFixaHistorico, ContaFixaPagamento } from "@/lib/types";
@@ -489,10 +489,7 @@ export default function ContasFixasList() {
             <ul className="mt-4 max-h-64 space-y-2 overflow-y-auto">
               {historico.map((h) => (
                 <li key={h.id} className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-500">
-                    desde{" "}
-                    {new Date(h.vigente_desde + "T00:00:00").toLocaleDateString("pt-BR")}
-                  </span>
+                  <span className="text-neutral-500">desde {formatDate(h.vigente_desde)}</span>
                   <span className="font-medium text-neutral-900">
                     {formatCurrency(Number(h.valor))}
                   </span>

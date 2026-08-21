@@ -1,7 +1,7 @@
 "use client";
 
 import EntityTable, { ColumnConfig, FieldConfig } from "@/components/EntityTable";
-import { formatCurrency } from "@/components/SummaryCard";
+import { formatCurrency, formatDate } from "@/components/SummaryCard";
 import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { ContaVariavel } from "@/lib/types";
 
@@ -15,7 +15,7 @@ const fields: FieldConfig[] = [
 const columns: ColumnConfig<ContaVariavel>[] = [
   { key: "nome", label: "Nome" },
   { key: "valor", label: "Valor", render: (item) => formatCurrency(Number(item.valor)) },
-  { key: "data", label: "Data" },
+  { key: "data", label: "Data", render: (item) => formatDate(item.data) },
   { key: "categoria", label: "Categoria" },
 ];
 
@@ -38,8 +38,11 @@ export default function ContasVariaveisPage() {
         orderBy="data"
         ascending={false}
         monthFilter={{ field: "data" }}
-        sortableFields={["valor"]}
-        filterFields={[{ field: "categoria", label: "Categoria" }]}
+        sortableFields={["valor", "data"]}
+        filterFields={[
+          { field: "categoria", label: "Categoria" },
+          { field: "data", label: "Data", format: formatDate },
+        ]}
       />
     </div>
   );

@@ -5,6 +5,13 @@ function formatCurrency(value: number) {
   });
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  const [year, month, day] = value.slice(0, 10).split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
 export default function SummaryCard({
   label,
   value,
@@ -25,4 +32,4 @@ export default function SummaryCard({
   );
 }
 
-export { formatCurrency };
+export { formatCurrency, formatDate };
