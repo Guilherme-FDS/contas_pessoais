@@ -30,7 +30,7 @@ export default function Nav() {
           <img
             src="/familia-silva.jpg"
             alt="Família Silva"
-            className="h-8 w-8 rounded-full object-cover ring-1 ring-neutral-200"
+            className="h-12 w-12 rounded-full object-cover ring-2 ring-brand-100"
           />
           <span className="text-sm font-semibold text-neutral-900">
             Finanças da Família Silva

@@ -24,7 +24,8 @@ export default function ContasVariaveisPage() {
       <div>
         <h1 className="text-lg font-semibold text-neutral-900">Contas Variáveis</h1>
         <p className="text-sm text-neutral-500">
-          Contas mensais com valor que muda (luz, água, cartão, etc).
+          Contas mensais com valor que muda (luz, água, cartão, etc). Lance um registro novo
+          a cada mês — use as setas abaixo pra navegar entre os meses e ver o total de cada um.
         </p>
       </div>
       <EntityTable<ContaVariavel>
@@ -32,9 +33,10 @@ export default function ContasVariaveisPage() {
         fields={fields}
         columns={columns}
         sumField="valor"
-        sumLabel="Total lançado"
+        sumLabel="Total do mês"
         orderBy="data"
         ascending={false}
+        monthFilter={{ field: "data" }}
       />
     </div>
   );

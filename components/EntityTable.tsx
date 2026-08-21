@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/components/SummaryCard";
+import MonthNav, { currentMonth, monthRange } from "@/components/MonthNav";
 
 export type FieldType = "text" | "number" | "date" | "select" | "textarea";
 
@@ -28,6 +29,10 @@ interface EntityTableProps<T extends { id: string }> {
   sumFilter?: (item: T) => boolean;
   sumLabel?: string;
   toggleField?: keyof T & string;
+  statusField?: keyof T & string;
+  statusDoneLabel?: string;
+  statusReactivateLabel?: string;
+  monthFilter?: { field: keyof T & string };
   emptyLabel?: string;
   orderBy?: keyof T & string;
   ascending?: boolean;
@@ -47,6 +52,10 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   sumFilter,
   sumLabel = "Total",
   toggleField,
+  statusField,
+  statusDoneLabel = "Quitar",
+  statusReactivateLabel = "Reativar",
+  monthFilter,
   emptyLabel = "Nenhum item cadastrado ainda.",
   orderBy = "created_at" as keyof T & string,
   ascending = false,
@@ -59,13 +68,17 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   const [formValues, setFormValues] = useState<Record<string, string>>(emptyForm(fields));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth());
+  const [showInactive, setShowInactive] = useState(false);
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from(table)
-      .select("*")
-      .order(orderBy, { ascending });
+    let query = supabase.from(table).select("*").order(orderBy, { ascending });
+    if (monthFilter) {
+      const { start, end } = monthRange(selectedMonth);
+      query = query.gte(monthFilter.field, start).lt(monthFilter.field, end);
+    }
+    const { data, error } = await query;
     if (!error && data) setItems(data as T[]);
     setLoading(false);
   }
@@ -73,7 +86,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table]);
+  }, [table, selectedMonth]);
 
   function openNewForm() {
     setEditingId(null);
@@ -150,29 +163,54 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     load();
   }
 
+  async function handleStatusChange(item: T, value: boolean) {
+    if (!statusField) return;
+    await supabase
+      .from(table)
+      .update({ [statusField]: value })
+      .eq("id", item.id);
+    load();
+  }
+
+  const visibleItems = statusField
+    ? items.filter((item) => Boolean(item[statusField]) === !showInactive)
+    : items;
+
   const total = sumField
-    ? items
+    ? visibleItems
         .filter((item) => (sumFilter ? sumFilter(item) : true))
         .reduce((acc, item) => acc + Number(item[sumField] ?? 0), 0)
     : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        {total !== null ? (
-          <div>
-            <p className="text-xs text-neutral-500">{sumLabel}</p>
-            <p className="text-xl font-semibold text-neutral-900">{formatCurrency(total)}</p>
-          </div>
-        ) : (
-          <div />
-        )}
-        <button
-          onClick={openNewForm}
-          className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          + Adicionar
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          {total !== null && (
+            <div>
+              <p className="text-xs text-neutral-500">{sumLabel}</p>
+              <p className="text-xl font-semibold text-neutral-900">{formatCurrency(total)}</p>
+            </div>
+          )}
+          {monthFilter && <MonthNav month={selectedMonth} onChange={setSelectedMonth} />}
+        </div>
+        <div className="flex items-center gap-3">
+          {statusField && (
+            <button
+              type="button"
+              onClick={() => setShowInactive((v) => !v)}
+              className="text-xs font-medium text-neutral-500 hover:text-neutral-800 hover:underline"
+            >
+              {showInactive ? "Ver ativas" : "Ver quitadas"}
+            </button>
+          )}
+          <button
+            onClick={openNewForm}
+            className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            + Adicionar
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -274,14 +312,14 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
                   Carregando...
                 </td>
               </tr>
-            ) : items.length === 0 ? (
+            ) : visibleItems.length === 0 ? (
               <tr>
                 <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2}>
-                  {emptyLabel}
+                  {showInactive ? "Nenhuma conta quitada ainda." : emptyLabel}
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
+              visibleItems.map((item) => (
                 <tr key={item.id} className="hover:bg-neutral-50">
                   {toggleField && (
                     <td className="px-4 py-3">
@@ -299,9 +337,25 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
                     </td>
                   ))}
                   <td className="px-4 py-3 text-right">
+                    {statusField &&
+                      (showInactive ? (
+                        <button
+                          onClick={() => handleStatusChange(item, true)}
+                          className="mr-3 text-xs font-medium text-brand-700 hover:underline"
+                        >
+                          {statusReactivateLabel}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleStatusChange(item, false)}
+                          className="mr-3 text-xs font-medium text-brand-700 hover:underline"
+                        >
+                          {statusDoneLabel}
+                        </button>
+                      ))}
                     <button
                       onClick={() => openEditForm(item)}
-                      className="mr-3 text-xs font-medium text-brand-700 hover:underline"
+                      className="mr-3 text-xs font-medium text-neutral-600 hover:underline"
                     >
                       Editar
                     </button>

@@ -25,6 +25,8 @@ export default function ContasFixasPage() {
         <h1 className="text-lg font-semibold text-neutral-900">Contas Fixas</h1>
         <p className="text-sm text-neutral-500">
           Contas que se repetem todo mês com o mesmo valor (aluguel, assinaturas, etc).
+          Quando terminar de pagar uma (ex: financiamento quitado), clique em &quot;Quitar&quot;
+          em vez de excluir — ela sai da lista mas fica guardada em &quot;Ver quitadas&quot;.
         </p>
       </div>
       <EntityTable<ContaFixa>
@@ -33,6 +35,9 @@ export default function ContasFixasPage() {
         columns={columns}
         sumField="valor"
         sumLabel="Total mensal em contas fixas"
+        statusField="ativo"
+        statusDoneLabel="Quitar"
+        statusReactivateLabel="Reativar"
       />
     </div>
   );
