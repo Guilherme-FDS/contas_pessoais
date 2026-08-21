@@ -1,0 +1,15 @@
+export const CATEGORIAS_CONTAS = [
+  "Moradia",
+  "Contas e Serviços",
+  "Assinaturas",
+  "Transporte",
+  "Educação",
+  "Saúde",
+  "Alimentação",
+  "Lazer",
+  "Impostos e Taxas",
+  "Cartão de Crédito",
+  "Manutenção",
+  "Bens e Compras",
+  "Outros",
+];

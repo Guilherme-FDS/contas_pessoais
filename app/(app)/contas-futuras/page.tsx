@@ -2,12 +2,13 @@
 
 import EntityTable, { ColumnConfig, FieldConfig } from "@/components/EntityTable";
 import { formatCurrency } from "@/components/SummaryCard";
+import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { ContaFutura } from "@/lib/types";
 
 const fields: FieldConfig[] = [
   { name: "nome", label: "Nome", type: "text", required: true },
   { name: "valor", label: "Valor (R$)", type: "number", required: true },
-  { name: "categoria", label: "Categoria", type: "text" },
+  { name: "categoria", label: "Categoria", type: "select", options: CATEGORIAS_CONTAS },
   { name: "data_prevista", label: "Data prevista", type: "date" },
   {
     name: "status",
@@ -46,6 +47,8 @@ export default function ContasFuturasPage() {
         toggleField="incluir_soma"
         orderBy="data_prevista"
         ascending={true}
+        sortableFields={["valor"]}
+        filterFields={[{ field: "categoria", label: "Categoria" }]}
       />
     </div>
   );

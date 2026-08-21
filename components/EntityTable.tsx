@@ -21,6 +21,11 @@ export interface ColumnConfig<T> {
   render?: (item: T) => React.ReactNode;
 }
 
+export interface FilterFieldConfig<T> {
+  field: keyof T & string;
+  label: string;
+}
+
 interface EntityTableProps<T extends { id: string }> {
   table: string;
   fields: FieldConfig[];
@@ -33,9 +38,20 @@ interface EntityTableProps<T extends { id: string }> {
   statusDoneLabel?: string;
   statusReactivateLabel?: string;
   monthFilter?: { field: keyof T & string };
+  sortableFields?: (keyof T & string)[];
+  filterFields?: FilterFieldConfig<T>[];
   emptyLabel?: string;
   orderBy?: keyof T & string;
   ascending?: boolean;
+}
+
+function distinctValues<T extends Record<string, any>>(items: T[], field: keyof T & string) {
+  const set = new Set<string>();
+  for (const item of items) {
+    const v = item[field];
+    if (v !== null && v !== undefined && v !== "") set.add(String(v));
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
 }
 
 function emptyForm(fields: FieldConfig[]) {
@@ -56,6 +72,8 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   statusDoneLabel = "Quitar",
   statusReactivateLabel = "Reativar",
   monthFilter,
+  sortableFields,
+  filterFields,
   emptyLabel = "Nenhum item cadastrado ainda.",
   orderBy = "created_at" as keyof T & string,
   ascending = false,
@@ -70,6 +88,9 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   const [saving, setSaving] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth());
   const [showInactive, setShowInactive] = useState(false);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
 
   async function load() {
     setLoading(true);
@@ -172,15 +193,47 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     load();
   }
 
-  const visibleItems = statusField
+  function handleSort(field: string) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
+
+  const statusFiltered = statusField
     ? items.filter((item) => Boolean(item[statusField]) === !showInactive)
     : items;
+
+  const activeFilterEntries = Object.entries(activeFilters).filter(([, v]) => v);
+  const filteredItems = activeFilterEntries.length
+    ? statusFiltered.filter((item) =>
+        activeFilterEntries.every(([field, value]) => String(item[field] ?? "") === value)
+      )
+    : statusFiltered;
+
+  const visibleItems = sortField
+    ? [...filteredItems].sort((a, b) => {
+        const av = a[sortField];
+        const bv = b[sortField];
+        let cmp: number;
+        if (typeof av === "number" && typeof bv === "number") {
+          cmp = av - bv;
+        } else {
+          cmp = String(av ?? "").localeCompare(String(bv ?? ""), "pt-BR", { numeric: true });
+        }
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : filteredItems;
 
   const total = sumField
     ? visibleItems
         .filter((item) => (sumFilter ? sumFilter(item) : true))
         .reduce((acc, item) => acc + Number(item[sumField] ?? 0), 0)
     : null;
+
+  const hasActiveFilters = activeFilterEntries.length > 0;
 
   return (
     <div className="space-y-4">
@@ -212,6 +265,37 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
           </button>
         </div>
       </div>
+
+      {filterFields && filterFields.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          {filterFields.map((f) => (
+            <select
+              key={f.field}
+              value={activeFilters[f.field] ?? ""}
+              onChange={(e) =>
+                setActiveFilters((v) => ({ ...v, [f.field]: e.target.value }))
+              }
+              className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">{f.label}: todas</option>
+              {distinctValues(statusFiltered, f.field).map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          ))}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => setActiveFilters({})}
+              className="text-xs font-medium text-neutral-500 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4">
@@ -297,11 +381,27 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
           <thead>
             <tr className="text-left text-xs uppercase text-neutral-400">
               {toggleField && <th className="px-4 py-3">Incluir</th>}
-              {columns.map((col) => (
-                <th key={String(col.key)} className="px-4 py-3">
-                  {col.label}
-                </th>
-              ))}
+              {columns.map((col) => {
+                const sortable = sortableFields?.includes(col.key);
+                return (
+                  <th key={String(col.key)} className="px-4 py-3">
+                    {sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col.key)}
+                        className="flex items-center gap-1 hover:text-neutral-700"
+                      >
+                        {col.label}
+                        <span className="text-[10px]">
+                          {sortField === col.key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    ) : (
+                      col.label
+                    )}
+                  </th>
+                );
+              })}
               <th className="px-4 py-3" />
             </tr>
           </thead>

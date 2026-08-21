@@ -12,6 +12,23 @@ export interface ContaFixa {
   updated_at: string;
 }
 
+export interface ContaFixaHistorico {
+  id: string;
+  conta_fixa_id: string;
+  valor: number;
+  vigente_desde: string;
+  created_at: string;
+}
+
+export interface ContaFixaPagamento {
+  id: string;
+  conta_fixa_id: string;
+  mes: string;
+  pago_em: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface ContaVariavel {
   id: string;
   nome: string;

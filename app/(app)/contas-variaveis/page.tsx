@@ -2,13 +2,14 @@
 
 import EntityTable, { ColumnConfig, FieldConfig } from "@/components/EntityTable";
 import { formatCurrency } from "@/components/SummaryCard";
+import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { ContaVariavel } from "@/lib/types";
 
 const fields: FieldConfig[] = [
   { name: "nome", label: "Nome", type: "text", required: true },
   { name: "valor", label: "Valor (R$)", type: "number", required: true },
   { name: "data", label: "Data", type: "date", required: true },
-  { name: "categoria", label: "Categoria", type: "text" },
+  { name: "categoria", label: "Categoria", type: "select", options: CATEGORIAS_CONTAS },
 ];
 
 const columns: ColumnConfig<ContaVariavel>[] = [
@@ -37,6 +38,8 @@ export default function ContasVariaveisPage() {
         orderBy="data"
         ascending={false}
         monthFilter={{ field: "data" }}
+        sortableFields={["valor"]}
+        filterFields={[{ field: "categoria", label: "Categoria" }]}
       />
     </div>
   );
