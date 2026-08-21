@@ -36,10 +36,15 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-neutral-900">
-          Finanças da Família
+        <img
+          src="/familia-silva.jpg"
+          alt="Família Silva"
+          className="mx-auto h-20 w-20 rounded-full object-cover ring-2 ring-brand-100"
+        />
+        <h1 className="mt-4 text-center text-xl font-semibold text-neutral-900">
+          Finanças da Família Silva
         </h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <p className="mt-1 text-center text-sm text-neutral-500">
           Entre com sua conta para continuar.
         </p>
 

@@ -3,7 +3,7 @@ import "./globals.css";
 import RegisterSW from "@/components/RegisterSW";
 
 export const metadata: Metadata = {
-  title: "Finanças da Família",
+  title: "Finanças da Família Silva",
   description: "Controle de contas fixas, variáveis, futuras e investimentos",
   manifest: "/manifest.json",
   icons: {

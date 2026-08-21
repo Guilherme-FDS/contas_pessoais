@@ -27,7 +27,7 @@ export default function Nav() {
     <header className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <span className="text-sm font-semibold text-neutral-900">
-          Finanças da Família
+          Finanças da Família Silva
         </span>
         <button
           onClick={handleLogout}

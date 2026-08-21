@@ -1,4 +1,4 @@
-# Guia de configuração — Finanças da Família
+# Guia de configuração — Finanças da Família Silva
 
 Siga esses passos na ordem. Nenhum deles precisa de código, só cliques nos painéis do Supabase, GitHub e Vercel.
 
