@@ -7,7 +7,13 @@ export const metadata: Metadata = {
   description: "Controle de contas fixas, variáveis, futuras e investimentos",
   manifest: "/manifest.json",
   icons: {
+    icon: "/favicon.ico",
     apple: "/icons/icon-192.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Finanças da Família Silva",
+    statusBarStyle: "default",
   },
 };
 

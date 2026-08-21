@@ -26,9 +26,16 @@ export default function Nav() {
   return (
     <header className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <span className="text-sm font-semibold text-neutral-900">
-          Finanças da Família Silva
-        </span>
+        <div className="flex items-center gap-2">
+          <img
+            src="/familia-silva.jpg"
+            alt="Família Silva"
+            className="h-8 w-8 rounded-full object-cover ring-1 ring-neutral-200"
+          />
+          <span className="text-sm font-semibold text-neutral-900">
+            Finanças da Família Silva
+          </span>
+        </div>
         <button
           onClick={handleLogout}
           className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
