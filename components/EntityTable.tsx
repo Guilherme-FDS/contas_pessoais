@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/components/SummaryCard";
 import MonthNav, { currentMonth, monthRange } from "@/components/MonthNav";
+import { dueStatusByDate } from "@/lib/dueStatus";
+import DueStatusBadge, { DueStatusLegend } from "@/components/DueStatusBadge";
 
 export type FieldType = "text" | "number" | "date" | "select" | "textarea";
 
@@ -13,6 +15,7 @@ export interface FieldConfig {
   type: FieldType;
   options?: string[];
   required?: boolean;
+  default?: string;
 }
 
 export interface ColumnConfig<T> {
@@ -39,6 +42,11 @@ interface EntityTableProps<T extends { id: string }> {
   statusDoneLabel?: string;
   statusReactivateLabel?: string;
   monthFilter?: { field: keyof T & string };
+  dueStatus?: {
+    dateField: keyof T & string;
+    paidField: keyof T & string;
+    amountField?: keyof T & string;
+  };
   sortableFields?: (keyof T & string)[];
   filterFields?: FilterFieldConfig<T>[];
   emptyLabel?: string;
@@ -57,7 +65,7 @@ function distinctValues<T extends Record<string, any>>(items: T[], field: keyof 
 
 function emptyForm(fields: FieldConfig[]) {
   const obj: Record<string, string> = {};
-  for (const f of fields) obj[f.name] = "";
+  for (const f of fields) obj[f.name] = f.default ?? "";
   return obj;
 }
 
@@ -73,6 +81,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   statusDoneLabel = "Quitar",
   statusReactivateLabel = "Reativar",
   monthFilter,
+  dueStatus,
   sortableFields,
   filterFields,
   emptyLabel = "Nenhum item cadastrado ainda.",
@@ -136,7 +145,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
 
     const payload: Record<string, unknown> = {};
     for (const f of fields) {
-      const raw = formValues[f.name];
+      const raw = formValues[f.name] || f.default || "";
       if (f.type === "number") {
         payload[f.name] = raw === "" ? null : Number(raw);
       } else {
@@ -182,6 +191,25 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
       .from(table)
       .update({ [toggleField]: !item[toggleField] })
       .eq("id", item.id);
+    load();
+  }
+
+  async function handlePaidToggle(item: T) {
+    if (!dueStatus) return;
+    const isPaid = Boolean(item[dueStatus.paidField]);
+    if (isPaid) {
+      await supabase
+        .from(table)
+        .update({ [dueStatus.paidField]: false })
+        .eq("id", item.id);
+    } else {
+      const payload: Record<string, unknown> = { [dueStatus.paidField]: true };
+      if (dueStatus.amountField) {
+        payload.valor_pago = item[dueStatus.amountField];
+        payload.valor_juros = 0;
+      }
+      await supabase.from(table).update(payload).eq("id", item.id);
+    }
     load();
   }
 
@@ -298,6 +326,12 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
         </div>
       )}
 
+      {dueStatus && (
+        <div className="flex justify-end">
+          <DueStatusLegend />
+        </div>
+      )}
+
       {showForm && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4">
           <form
@@ -382,6 +416,12 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
           <thead>
             <tr className="text-left text-xs uppercase text-neutral-400">
               {toggleField && <th className="px-4 py-3">Incluir</th>}
+              {dueStatus && (
+                <>
+                  <th className="px-4 py-3">Pago</th>
+                  <th className="px-4 py-3">Status</th>
+                </>
+              )}
               {columns.map((col) => {
                 const sortable = sortableFields?.includes(col.key);
                 return (
@@ -409,13 +449,13 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
           <tbody className="divide-y divide-neutral-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2 + (dueStatus ? 2 : 0)}>
                   Carregando...
                 </td>
               </tr>
             ) : visibleItems.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2 + (dueStatus ? 2 : 0)}>
                   {showInactive ? "Nenhuma conta quitada ainda." : emptyLabel}
                 </td>
               </tr>
@@ -431,6 +471,26 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
                         className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
                       />
                     </td>
+                  )}
+                  {dueStatus && (
+                    <>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(item[dueStatus.paidField])}
+                          onChange={() => handlePaidToggle(item)}
+                          className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <DueStatusBadge
+                          status={dueStatusByDate(
+                            String(item[dueStatus.dateField] ?? ""),
+                            Boolean(item[dueStatus.paidField])
+                          )}
+                        />
+                      </td>
+                    </>
                   )}
                   {columns.map((col) => (
                     <td key={String(col.key)} className="px-4 py-3 text-neutral-700">

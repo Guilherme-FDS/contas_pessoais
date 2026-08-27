@@ -10,6 +10,7 @@ const fields: FieldConfig[] = [
   { name: "valor", label: "Valor (R$)", type: "number", required: true },
   { name: "data", label: "Data", type: "date", required: true },
   { name: "categoria", label: "Categoria", type: "select", options: CATEGORIAS_CONTAS },
+  { name: "valor_juros", label: "Juros/Multa (R$)", type: "number", default: "0" },
 ];
 
 const columns: ColumnConfig<ContaVariavel>[] = [
@@ -27,6 +28,7 @@ export default function ContasVariaveisPage() {
         <p className="text-sm text-neutral-500">
           Contas mensais com valor que muda (luz, água, cartão, etc). Lance um registro novo
           a cada mês — use as setas abaixo pra navegar entre os meses e ver o total de cada um.
+          Marque &quot;Pago&quot; quando quitar — sem isso, o status fica vermelho depois da data.
         </p>
       </div>
       <EntityTable<ContaVariavel>
@@ -43,6 +45,7 @@ export default function ContasVariaveisPage() {
           { field: "categoria", label: "Categoria" },
           { field: "data", label: "Data", format: formatDate },
         ]}
+        dueStatus={{ dateField: "data", paidField: "pago", amountField: "valor" }}
       />
     </div>
   );

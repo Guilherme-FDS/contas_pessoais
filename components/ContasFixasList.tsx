@@ -1,55 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/components/SummaryCard";
-import { currentMonth } from "@/components/MonthNav";
+import MonthNav, { currentMonth, shiftMonth } from "@/components/MonthNav";
 import { CATEGORIAS_CONTAS } from "@/lib/categorias";
+import { dueStatusByDayOfMonth } from "@/lib/dueStatus";
+import DueStatusBadge, { DueStatusLegend } from "@/components/DueStatusBadge";
 import type { ContaFixa, ContaFixaHistorico, ContaFixaPagamento } from "@/lib/types";
 
-type DueStatus = "pago" | "verde" | "laranja" | "vermelho" | "neutro";
-
-function dueStatus(diaVencimento: number | null, paid: boolean): DueStatus {
-  if (paid) return "pago";
-  if (!diaVencimento) return "neutro";
-  const today = new Date().getDate();
-  const daysUntil = diaVencimento - today;
-  if (daysUntil < 0) return "vermelho";
-  if (daysUntil === 0) return "laranja";
-  return "verde";
+function emptyForm() {
+  return {
+    nome: "",
+    valor: "",
+    dia_vencimento: "",
+    categoria: "",
+    total_parcelas: "",
+    parcela_inicial: "1",
+    data_primeira_parcela: "",
+  };
 }
 
-const STATUS_STYLES: Record<DueStatus, string> = {
-  pago: "bg-neutral-100 text-neutral-500",
-  verde: "bg-emerald-100 text-emerald-700",
-  laranja: "bg-amber-100 text-amber-700",
-  vermelho: "bg-red-100 text-red-700",
-  neutro: "bg-neutral-100 text-neutral-500",
-};
-
-const STATUS_LABELS: Record<DueStatus, string> = {
-  pago: "Pago",
-  verde: "Em dia",
-  laranja: "Vence hoje",
-  vermelho: "Atrasado",
-  neutro: "",
-};
-
-function emptyForm() {
-  return { nome: "", valor: "", dia_vencimento: "", categoria: "" };
+function emptyPaymentForm() {
+  return { valor_pago: "", valor_juros: "0" };
 }
 
 export default function ContasFixasList() {
   const supabase = createClient();
-  const mes = currentMonth();
 
   const [items, setItems] = useState<ContaFixa[]>([]);
-  const [pagamentos, setPagamentos] = useState<ContaFixaPagamento[]>([]);
+  const [allPagamentos, setAllPagamentos] = useState<ContaFixaPagamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth());
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState(emptyForm());
+  const [temParcelas, setTemParcelas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
@@ -57,15 +44,20 @@ export default function ContasFixasList() {
   const [filterVencimento, setFilterVencimento] = useState("");
   const [historicoFor, setHistoricoFor] = useState<ContaFixa | null>(null);
   const [historico, setHistorico] = useState<ContaFixaHistorico[]>([]);
+  const [paymentFor, setPaymentFor] = useState<ContaFixa | null>(null);
+  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
+  const [savingPayment, setSavingPayment] = useState(false);
+
+  const isCurrentMonth = selectedMonth === currentMonth();
 
   async function load() {
     setLoading(true);
     const [contasRes, pagamentosRes] = await Promise.all([
       supabase.from("contas_fixas").select("*").order("nome", { ascending: true }),
-      supabase.from("contas_fixas_pagamentos").select("*").eq("mes", mes),
+      supabase.from("contas_fixas_pagamentos").select("*"),
     ]);
     setItems((contasRes.data ?? []) as ContaFixa[]);
-    setPagamentos((pagamentosRes.data ?? []) as ContaFixaPagamento[]);
+    setAllPagamentos((pagamentosRes.data ?? []) as ContaFixaPagamento[]);
     setLoading(false);
   }
 
@@ -74,11 +66,43 @@ export default function ContasFixasList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const paidIds = useMemo(() => new Set(pagamentos.map((p) => p.conta_fixa_id)), [pagamentos]);
+  function paymentOf(item: ContaFixa, mes: string) {
+    return allPagamentos.find((p) => p.conta_fixa_id === item.id && p.mes === mes);
+  }
+
+  function isPaid(item: ContaFixa, mes: string) {
+    return Boolean(paymentOf(item, mes)?.pago);
+  }
+
+  // parcela_inicial já conta o mês de data_primeira_parcela; cada competência
+  // paga além dessa soma +1 (não incrementa em meses que ficaram em aberto).
+  function parcelaAtual(item: ContaFixa, uptoMonth: string): number | null {
+    if (!item.tem_parcelas || !item.data_primeira_parcela) return null;
+    const startMonth = item.data_primeira_parcela.slice(0, 7);
+    const paidCount = allPagamentos.filter(
+      (p) => p.conta_fixa_id === item.id && p.pago && p.mes >= startMonth && p.mes <= uptoMonth
+    ).length;
+    return item.parcela_inicial + Math.max(0, paidCount - 1);
+  }
+
+  function overdueSinceMonth(item: ContaFixa): string | null {
+    if (!isCurrentMonth) return null;
+    const createdMonth = item.created_at.slice(0, 7);
+    let cursor = shiftMonth(currentMonth(), -1);
+    let earliest: string | null = null;
+    for (let i = 0; i < 12; i++) {
+      if (cursor < createdMonth) break;
+      if (isPaid(item, cursor)) break;
+      earliest = cursor;
+      cursor = shiftMonth(cursor, -1);
+    }
+    return earliest;
+  }
 
   function openNewForm() {
     setEditingId(null);
     setFormValues(emptyForm());
+    setTemParcelas(false);
     setError(null);
     setShowForm(true);
   }
@@ -90,7 +114,11 @@ export default function ContasFixasList() {
       valor: String(item.valor),
       dia_vencimento: item.dia_vencimento ? String(item.dia_vencimento) : "",
       categoria: item.categoria ?? "",
+      total_parcelas: item.total_parcelas ? String(item.total_parcelas) : "",
+      parcela_inicial: String(item.parcela_inicial ?? 1),
+      data_primeira_parcela: item.data_primeira_parcela ?? "",
     });
+    setTemParcelas(item.tem_parcelas);
     setError(null);
     setShowForm(true);
   }
@@ -105,6 +133,10 @@ export default function ContasFixasList() {
       valor: Number(formValues.valor),
       dia_vencimento: formValues.dia_vencimento ? Number(formValues.dia_vencimento) : null,
       categoria: formValues.categoria || null,
+      tem_parcelas: temParcelas,
+      total_parcelas: temParcelas && formValues.total_parcelas ? Number(formValues.total_parcelas) : null,
+      parcela_inicial: temParcelas && formValues.parcela_inicial ? Number(formValues.parcela_inicial) : 1,
+      data_primeira_parcela: temParcelas && formValues.data_primeira_parcela ? formValues.data_primeira_parcela : null,
     };
 
     if (editingId) {
@@ -145,20 +177,52 @@ export default function ContasFixasList() {
   }
 
   async function handleTogglePaid(item: ContaFixa) {
-    if (paidIds.has(item.id)) {
+    if (!isCurrentMonth) return;
+    if (isPaid(item, selectedMonth)) {
       await supabase
         .from("contas_fixas_pagamentos")
         .delete()
         .eq("conta_fixa_id", item.id)
-        .eq("mes", mes);
+        .eq("mes", selectedMonth);
     } else {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      await supabase
-        .from("contas_fixas_pagamentos")
-        .insert({ conta_fixa_id: item.id, mes, created_by: user?.id });
+      await supabase.from("contas_fixas_pagamentos").insert({
+        conta_fixa_id: item.id,
+        mes: selectedMonth,
+        pago: true,
+        valor_pago: item.valor,
+        valor_juros: 0,
+        created_by: user?.id,
+      });
     }
+    load();
+  }
+
+  function openPaymentEdit(item: ContaFixa) {
+    const payment = paymentOf(item, selectedMonth);
+    setPaymentForm({
+      valor_pago: payment?.valor_pago != null ? String(payment.valor_pago) : String(item.valor),
+      valor_juros: payment?.valor_juros != null ? String(payment.valor_juros) : "0",
+    });
+    setPaymentFor(item);
+  }
+
+  async function handleSavePayment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!paymentFor) return;
+    setSavingPayment(true);
+    await supabase
+      .from("contas_fixas_pagamentos")
+      .update({
+        valor_pago: Number(paymentForm.valor_pago),
+        valor_juros: Number(paymentForm.valor_juros) || 0,
+      })
+      .eq("conta_fixa_id", paymentFor.id)
+      .eq("mes", selectedMonth);
+    setSavingPayment(false);
+    setPaymentFor(null);
     load();
   }
 
@@ -201,9 +265,12 @@ export default function ContasFixasList() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs text-neutral-500">Total mensal em contas fixas</p>
-          <p className="text-xl font-semibold text-neutral-900">{formatCurrency(total)}</p>
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <p className="text-xs text-neutral-500">Total mensal em contas fixas</p>
+            <p className="text-xl font-semibold text-neutral-900">{formatCurrency(total)}</p>
+          </div>
+          <MonthNav month={selectedMonth} onChange={setSelectedMonth} />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -221,6 +288,13 @@ export default function ContasFixasList() {
           </button>
         </div>
       </div>
+
+      {!isCurrentMonth && (
+        <p className="rounded-lg bg-neutral-100 px-3 py-2 text-xs text-neutral-600">
+          Vendo um mês passado/futuro — o pagamento fica só como consulta aqui. Marcar
+          &quot;Paguei&quot; só funciona no mês atual.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <select
@@ -259,17 +333,9 @@ export default function ContasFixasList() {
             Limpar filtros
           </button>
         )}
-        {!showInactive && (
-          <span className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-neutral-500">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Em dia
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-amber-500" /> Vence hoje
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-red-500" /> Atrasado (não marcado como pago)
-            </span>
+        {!showInactive && isCurrentMonth && (
+          <span className="ml-auto">
+            <DueStatusLegend />
           </span>
         )}
       </div>
@@ -336,6 +402,62 @@ export default function ContasFixasList() {
                   ))}
                 </select>
               </div>
+
+              <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={temParcelas}
+                  onChange={(e) => setTemParcelas(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
+                />
+                Essa conta tem parcelas (financiamento, etc)?
+              </label>
+
+              {temParcelas && (
+                <div className="space-y-3 rounded-lg bg-neutral-50 p-3">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Total de parcelas
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formValues.total_parcelas}
+                      onChange={(e) =>
+                        setFormValues((v) => ({ ...v, total_parcelas: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Parcela inicial (se já vinha pagando antes de usar o app)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formValues.parcela_inicial}
+                      onChange={(e) =>
+                        setFormValues((v) => ({ ...v, parcela_inicial: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Mês da parcela inicial
+                    </label>
+                    <input
+                      type="date"
+                      value={formValues.data_primeira_parcela}
+                      onChange={(e) =>
+                        setFormValues((v) => ({ ...v, data_primeira_parcela: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
@@ -364,7 +486,7 @@ export default function ContasFixasList() {
         <table className="min-w-full divide-y divide-neutral-200 text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-neutral-400">
-              {!showInactive && <th className="px-4 py-3">Paguei</th>}
+              <th className="px-4 py-3">Paguei</th>
               <th className="px-4 py-3">Nome</th>
               <th className="px-4 py-3">
                 <button
@@ -381,6 +503,7 @@ export default function ContasFixasList() {
                 </button>
               </th>
               <th className="px-4 py-3">Vencimento</th>
+              <th className="px-4 py-3">Parcela</th>
               <th className="px-4 py-3">Categoria</th>
               <th className="px-4 py-3" />
             </tr>
@@ -388,50 +511,89 @@ export default function ContasFixasList() {
           <tbody className="divide-y divide-neutral-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={6}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={7}>
                   Carregando...
                 </td>
               </tr>
             ) : sorted.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={6}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={7}>
                   {showInactive ? "Nenhuma conta quitada ainda." : "Nenhum item cadastrado ainda."}
                 </td>
               </tr>
             ) : (
               sorted.map((item) => {
-                const paid = paidIds.has(item.id);
-                const status = dueStatus(item.dia_vencimento, paid);
+                const paid = isPaid(item, selectedMonth);
+                const status = dueStatusByDayOfMonth(item.dia_vencimento, paid);
+                const parcela = parcelaAtual(item, selectedMonth);
+                const ultimaParcela =
+                  isCurrentMonth &&
+                  parcela !== null &&
+                  item.total_parcelas !== null &&
+                  parcela >= item.total_parcelas &&
+                  paid;
+                const overdueSince = overdueSinceMonth(item);
                 return (
                   <tr key={item.id} className="hover:bg-neutral-50">
-                    {!showInactive && (
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={paid}
-                          onChange={() => handleTogglePaid(item)}
-                          className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
-                        />
-                      </td>
-                    )}
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={paid}
+                        disabled={!isCurrentMonth}
+                        onChange={() => handleTogglePaid(item)}
+                        className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 disabled:opacity-40"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-neutral-700">{item.nome}</td>
                     <td className="px-4 py-3 text-neutral-700">
                       {formatCurrency(Number(item.valor))}
                     </td>
                     <td className="px-4 py-3">
-                      {item.dia_vencimento ? (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}
-                        >
-                          Dia {item.dia_vencimento}
-                          {STATUS_LABELS[status] ? ` · ${STATUS_LABELS[status]}` : ""}
-                        </span>
+                      <div className="flex flex-col gap-1">
+                        {item.dia_vencimento ? (
+                          isCurrentMonth ? (
+                            <DueStatusBadge status={status} prefix={`Dia ${item.dia_vencimento}`} />
+                          ) : (
+                            <span className="text-xs text-neutral-500">
+                              Dia {item.dia_vencimento} · {paid ? "Pago" : "Não pago"}
+                            </span>
+                          )
+                        ) : (
+                          "-"
+                        )}
+                        {overdueSince && (
+                          <span className="w-fit rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                            Atrasado desde {formatDate(overdueSince + "-01")}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {parcela !== null ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-neutral-600">
+                            Parcela {parcela} de {item.total_parcelas ?? "?"}
+                          </span>
+                          {ultimaParcela && (
+                            <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                              Última parcela — considere Quitar
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         "-"
                       )}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{item.categoria ?? "-"}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {isCurrentMonth && paid && (
+                        <button
+                          onClick={() => openPaymentEdit(item)}
+                          className="mr-3 text-xs font-medium text-neutral-600 hover:underline"
+                        >
+                          Editar pagamento
+                        </button>
+                      )}
                       <button
                         onClick={() => openHistorico(item)}
                         className="mr-3 text-xs font-medium text-neutral-600 hover:underline"
@@ -474,6 +636,70 @@ export default function ContasFixasList() {
         </table>
       </div>
 
+      {paymentFor && (
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4"
+          onClick={() => setPaymentFor(null)}
+        >
+          <form
+            onSubmit={handleSavePayment}
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-neutral-900">
+              Pagamento — {paymentFor.nome}
+            </h3>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">
+                  Valor pago (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={paymentForm.valor_pago}
+                  onChange={(e) =>
+                    setPaymentForm((v) => ({ ...v, valor_pago: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">
+                  Juros/Multa (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paymentForm.valor_juros}
+                  onChange={(e) =>
+                    setPaymentForm((v) => ({ ...v, valor_juros: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentFor(null)}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={savingPayment}
+                className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                {savingPayment ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {historicoFor && (
         <div
           className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4"
@@ -484,9 +710,11 @@ export default function ContasFixasList() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold text-neutral-900">
-              Histórico de valores — {historicoFor.nome}
+              Histórico — {historicoFor.nome}
             </h3>
-            <ul className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+
+            <p className="mt-4 text-xs font-semibold uppercase text-neutral-400">Valores</p>
+            <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto">
               {historico.map((h) => (
                 <li key={h.id} className="flex items-center justify-between text-sm">
                   <span className="text-neutral-500">desde {formatDate(h.vigente_desde)}</span>
@@ -499,6 +727,31 @@ export default function ContasFixasList() {
                 <li className="text-sm text-neutral-400">Sem histórico ainda.</li>
               )}
             </ul>
+
+            <p className="mt-4 text-xs font-semibold uppercase text-neutral-400">Pagamentos</p>
+            <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+              {allPagamentos
+                .filter((p) => p.conta_fixa_id === historicoFor.id && p.pago)
+                .sort((a, b) => (a.mes < b.mes ? 1 : -1))
+                .map((p) => {
+                  const parcela = historicoFor.tem_parcelas
+                    ? parcelaAtual(historicoFor, p.mes)
+                    : null;
+                  return (
+                    <li key={p.id} className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-500">
+                        {parcela !== null ? `Parcela ${parcela}` : p.mes} — {formatDate(p.pago_em)}
+                      </span>
+                      <span className="font-medium text-neutral-900">
+                        {formatCurrency(Number(p.valor_pago ?? 0) + Number(p.valor_juros ?? 0))}
+                      </span>
+                    </li>
+                  );
+                })}
+              {allPagamentos.filter((p) => p.conta_fixa_id === historicoFor.id && p.pago).length ===
+                0 && <li className="text-sm text-neutral-400">Sem pagamentos ainda.</li>}
+            </ul>
+
             <button
               onClick={() => setHistoricoFor(null)}
               className="mt-5 w-full rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
