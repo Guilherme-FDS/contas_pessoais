@@ -81,7 +81,15 @@ export default function DashboardPage() {
   }, [selectedMonth]);
 
   const fixasAtivas = fixas.filter((f) => f.ativo);
-  const totalFixas = fixasAtivas.reduce((acc, c) => acc + Number(c.valor), 0);
+  // Contas já pagas na competência entram pelo valor realmente pago (com
+  // juros/multa); as ainda não pagas entram pelo valor programado.
+  const totalFixas = fixasAtivas.reduce((acc, c) => {
+    const payment = fixasPagamentos.find((p) => p.conta_fixa_id === c.id && p.pago);
+    const value = payment
+      ? Number(payment.valor_pago ?? c.valor) + Number(payment.valor_juros ?? 0)
+      : Number(c.valor);
+    return acc + value;
+  }, 0);
   const totalVariaveis = variaveis.reduce((acc, c) => acc + Number(c.valor), 0);
   const totalFuturasMarcadas = futuras
     .filter((c) => c.incluir_soma)

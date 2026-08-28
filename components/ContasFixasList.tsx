@@ -256,7 +256,15 @@ export default function ContasFixasList() {
       )
     : filtered;
 
-  const total = filtered.reduce((acc, item) => acc + Number(item.valor), 0);
+  // Itens já pagos na competência selecionada entram pelo valor realmente pago
+  // (incluindo juros/multa); os ainda não pagos entram pelo valor programado.
+  const total = filtered.reduce((acc, item) => {
+    const payment = paymentOf(item, selectedMonth);
+    const value = payment?.pago
+      ? Number(payment.valor_pago ?? item.valor) + Number(payment.valor_juros ?? 0)
+      : Number(item.valor);
+    return acc + value;
+  }, 0);
 
   const categoriasDisponiveis = Array.from(
     new Set(statusFiltered.map((i) => i.categoria).filter((c): c is string => Boolean(c)))
