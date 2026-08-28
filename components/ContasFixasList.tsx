@@ -347,16 +347,16 @@ export default function ContasFixasList() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4">
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4 py-8">
           <form
             onSubmit={handleSave}
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg"
+            className="flex max-h-full w-full max-w-md flex-col rounded-2xl bg-white shadow-lg"
           >
-            <h3 className="text-sm font-semibold text-neutral-900">
+            <h3 className="shrink-0 px-6 pt-6 text-sm font-semibold text-neutral-900">
               {editingId ? "Editar item" : "Novo item"}
             </h3>
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 flex-1 space-y-3 overflow-y-auto px-6">
               <div>
                 <label className="block text-sm font-medium text-neutral-700">Nome</label>
                 <input
@@ -464,11 +464,11 @@ export default function ContasFixasList() {
                   </div>
                 </div>
               )}
+
+              {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
 
-            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="flex shrink-0 justify-end gap-2 px-6 py-4">
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
