@@ -22,6 +22,7 @@ export interface ColumnConfig<T> {
   key: keyof T & string;
   label: string;
   render?: (item: T) => React.ReactNode;
+  hideOnMobile?: boolean;
 }
 
 export interface FilterFieldConfig<T> {
@@ -467,7 +468,10 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
               {columns.map((col) => {
                 const sortable = sortableFields?.includes(col.key);
                 return (
-                  <th key={String(col.key)} className="px-4 py-3">
+                  <th
+                    key={String(col.key)}
+                    className={`px-3 py-3 sm:px-4 ${col.hideOnMobile ? "hidden sm:table-cell" : ""}`}
+                  >
                     {sortable ? (
                       <button
                         type="button"
@@ -535,11 +539,14 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
                     </>
                   )}
                   {columns.map((col) => (
-                    <td key={String(col.key)} className="px-4 py-3 text-neutral-700">
+                    <td
+                      key={String(col.key)}
+                      className={`px-3 py-3 text-neutral-700 sm:px-4 ${col.hideOnMobile ? "hidden sm:table-cell" : ""}`}
+                    >
                       {col.render ? col.render(item) : String(item[col.key] ?? "-")}
                     </td>
                   ))}
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right sm:px-4">
                     {statusField &&
                       (showInactive ? (
                         <button

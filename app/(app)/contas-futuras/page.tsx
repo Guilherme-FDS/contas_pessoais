@@ -25,7 +25,7 @@ const fields: FieldConfig[] = [
 const columns: ColumnConfig<ContaFutura>[] = [
   { key: "nome", label: "Nome" },
   { key: "valor", label: "Valor", render: (item) => formatCurrency(Number(item.valor)) },
-  { key: "categoria", label: "Categoria" },
+  { key: "categoria", label: "Categoria", hideOnMobile: true },
   { key: "data_prevista", label: "Data prevista", render: (item) => formatDate(item.data_prevista) },
   { key: "status", label: "Status" },
 ];

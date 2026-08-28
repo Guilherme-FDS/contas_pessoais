@@ -17,7 +17,7 @@ const columns: ColumnConfig<ContaVariavel>[] = [
   { key: "nome", label: "Nome" },
   { key: "valor", label: "Valor", render: (item) => formatCurrency(Number(item.valor)) },
   { key: "data", label: "Data", render: (item) => formatDate(item.data) },
-  { key: "categoria", label: "Categoria" },
+  { key: "categoria", label: "Categoria", hideOnMobile: true },
 ];
 
 export default function ContasVariaveisPage() {

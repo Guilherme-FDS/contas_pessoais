@@ -28,7 +28,7 @@ const columns: ColumnConfig<Investimento>[] = [
     render: (item) => formatCurrency(Number(item.valor_investido)),
   },
   { key: "data_aplicacao", label: "Data", render: (item) => formatDate(item.data_aplicacao) },
-  { key: "corretora", label: "Corretora" },
+  { key: "corretora", label: "Corretora", hideOnMobile: true },
 ];
 
 export default function InvestimentosPage() {

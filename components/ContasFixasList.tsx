@@ -518,7 +518,7 @@ export default function ContasFixasList() {
               </th>
               <th className="px-4 py-3">Vencimento</th>
               <th className="px-4 py-3">Parcela</th>
-              <th className="px-4 py-3">Categoria</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Categoria</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -598,7 +598,9 @@ export default function ContasFixasList() {
                         "-"
                       )}
                     </td>
-                    <td className="px-4 py-3 text-neutral-700">{item.categoria ?? "-"}</td>
+                    <td className="hidden px-4 py-3 text-neutral-700 sm:table-cell">
+                      {item.categoria ?? "-"}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       {isCurrentMonth && paid && (
                         <button

@@ -339,11 +339,11 @@ export default function CartaoCreditoPage() {
             <table className="min-w-full divide-y divide-neutral-200 text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-neutral-400">
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Descrição</th>
-                  <th className="px-4 py-3">Valor</th>
-                  <th className="px-4 py-3">Parcela</th>
-                  <th className="px-4 py-3">Categoria</th>
+                  <th className="px-3 py-3 sm:px-4">Data</th>
+                  <th className="px-3 py-3 sm:px-4">Descrição</th>
+                  <th className="px-3 py-3 sm:px-4">Valor</th>
+                  <th className="hidden px-3 py-3 sm:table-cell sm:px-4">Parcela</th>
+                  <th className="px-3 py-3 sm:px-4">Categoria</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -362,15 +362,21 @@ export default function CartaoCreditoPage() {
                 ) : (
                   transacoes.map((t) => (
                     <tr key={t.id} className="hover:bg-neutral-50">
-                      <td className="px-4 py-3 text-neutral-700">{formatDate(t.data)}</td>
-                      <td className="px-4 py-3 text-neutral-700">{t.descricao}</td>
-                      <td className="px-4 py-3 text-neutral-700">{formatCurrency(Number(t.valor))}</td>
-                      <td className="px-4 py-3 text-neutral-700">
+                      <td className="whitespace-nowrap px-3 py-3 text-neutral-700 sm:px-4">
+                        {formatDate(t.data)}
+                      </td>
+                      <td className="max-w-[160px] truncate px-3 py-3 text-neutral-700 sm:max-w-none sm:px-4">
+                        {t.descricao}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-neutral-700 sm:px-4">
+                        {formatCurrency(Number(t.valor))}
+                      </td>
+                      <td className="hidden px-3 py-3 text-neutral-700 sm:table-cell sm:px-4">
                         {t.parcela_atual && t.total_parcelas
                           ? `${t.parcela_atual}/${t.total_parcelas}`
                           : "-"}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 sm:px-4">
                         <select
                           value={t.categoria ?? ""}
                           onChange={(e) => handleCategoriaChange(t.id, e.target.value)}

@@ -29,11 +29,17 @@ const fields: FieldConfig[] = [
 
 const columns: ColumnConfig<Consorcio>[] = [
   { key: "nome", label: "Nome" },
-  { key: "administradora", label: "Administradora", render: (item) => item.administradora ?? "-" },
+  {
+    key: "administradora",
+    label: "Administradora",
+    render: (item) => item.administradora ?? "-",
+    hideOnMobile: true,
+  },
   {
     key: "valor_carta",
     label: "Valor da carta",
     render: (item) => formatCurrency(Number(item.valor_carta)),
+    hideOnMobile: true,
   },
   {
     key: "valor_parcela",
@@ -57,6 +63,7 @@ const columns: ColumnConfig<Consorcio>[] = [
     key: "data_contemplacao",
     label: "Contemplação",
     render: (item) => formatDate(item.data_contemplacao),
+    hideOnMobile: true,
   },
 ];
 
