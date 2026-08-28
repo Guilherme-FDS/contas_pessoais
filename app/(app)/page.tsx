@@ -90,7 +90,10 @@ export default function DashboardPage() {
       : Number(c.valor);
     return acc + value;
   }, 0);
-  const totalVariaveis = variaveis.reduce((acc, c) => acc + Number(c.valor), 0);
+  const totalVariaveis = variaveis.reduce((acc, c) => {
+    const base = c.pago && c.valor_pago != null ? Number(c.valor_pago) : Number(c.valor);
+    return acc + base + Number(c.valor_juros ?? 0);
+  }, 0);
   const totalFuturasMarcadas = futuras
     .filter((c) => c.incluir_soma)
     .reduce((acc, c) => acc + Number(c.valor), 0);

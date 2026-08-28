@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/components/SummaryCard";
 import MonthNav, { currentMonth, monthRange } from "@/components/MonthNav";
-import { dueStatusByDate } from "@/lib/dueStatus";
+import { dueStatusByDate, DUE_STATUS_LABELS, type DueStatus } from "@/lib/dueStatus";
 import DueStatusBadge, { DueStatusLegend } from "@/components/DueStatusBadge";
 
 export type FieldType = "text" | "number" | "date" | "select" | "textarea";
@@ -101,6 +101,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+  const [dueStatusFilter, setDueStatusFilter] = useState<string>("");
 
   async function load() {
     setLoading(true);
@@ -236,11 +237,22 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     : items;
 
   const activeFilterEntries = Object.entries(activeFilters).filter(([, v]) => v);
-  const filteredItems = activeFilterEntries.length
+  const fieldFilteredItems = activeFilterEntries.length
     ? statusFiltered.filter((item) =>
         activeFilterEntries.every(([field, value]) => String(item[field] ?? "") === value)
       )
     : statusFiltered;
+
+  const filteredItems =
+    dueStatus && dueStatusFilter
+      ? fieldFilteredItems.filter(
+          (item) =>
+            dueStatusByDate(
+              String(item[dueStatus.dateField] ?? ""),
+              Boolean(item[dueStatus.paidField])
+            ) === dueStatusFilter
+        )
+      : fieldFilteredItems;
 
   const visibleItems = sortField
     ? [...filteredItems].sort((a, b) => {
@@ -256,13 +268,27 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
       })
     : filteredItems;
 
+  // Itens já pagos entram pelo valor realmente pago (valor_pago), se houver;
+  // em qualquer caso, soma valor_juros quando a tabela tiver essa coluna —
+  // assim juros/multa lançados no item atualizam o total na hora.
+  function itemTotalValue(item: T): number {
+    const juros = Number((item as any).valor_juros) || 0;
+    const paid = dueStatus ? Boolean(item[dueStatus.paidField]) : false;
+    const valorPago = (item as any).valor_pago;
+    const base =
+      paid && valorPago !== null && valorPago !== undefined
+        ? Number(valorPago) || 0
+        : Number(item[sumField as keyof T & string]) || 0;
+    return base + juros;
+  }
+
   const total = sumField
     ? visibleItems
         .filter((item) => (sumFilter ? sumFilter(item) : true))
-        .reduce((acc, item) => acc + Number(item[sumField] ?? 0), 0)
+        .reduce((acc, item) => acc + itemTotalValue(item), 0)
     : null;
 
-  const hasActiveFilters = activeFilterEntries.length > 0;
+  const hasActiveFilters = activeFilterEntries.length > 0 || Boolean(dueStatusFilter);
 
   return (
     <div className="space-y-4">
@@ -295,9 +321,9 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
         </div>
       </div>
 
-      {filterFields && filterFields.length > 0 && (
+      {((filterFields && filterFields.length > 0) || dueStatus) && (
         <div className="flex flex-wrap items-center gap-3">
-          {filterFields.map((f) => (
+          {filterFields?.map((f) => (
             <select
               key={f.field}
               value={activeFilters[f.field] ?? ""}
@@ -314,10 +340,27 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
               ))}
             </select>
           ))}
+          {dueStatus && (
+            <select
+              value={dueStatusFilter}
+              onChange={(e) => setDueStatusFilter(e.target.value)}
+              className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">Status: todos</option>
+              {(["verde", "laranja", "vermelho", "pago"] as DueStatus[]).map((s) => (
+                <option key={s} value={s}>
+                  {DUE_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          )}
           {hasActiveFilters && (
             <button
               type="button"
-              onClick={() => setActiveFilters({})}
+              onClick={() => {
+                setActiveFilters({});
+                setDueStatusFilter("");
+              }}
               className="text-xs font-medium text-neutral-500 hover:underline"
             >
               Limpar filtros
