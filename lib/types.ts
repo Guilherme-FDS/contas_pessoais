@@ -87,6 +87,26 @@ export interface TransacaoCartao {
   created_at: string;
 }
 
+export type StatusConsorcio = "ativo" | "contemplado" | "quitado" | "cancelado";
+
+export interface Consorcio {
+  id: string;
+  nome: string;
+  administradora: string | null;
+  numero_cota: string | null;
+  valor_carta: number;
+  valor_parcela: number;
+  parcela_atual: number | null;
+  total_parcelas: number | null;
+  status: StatusConsorcio;
+  data_adesao: string | null;
+  data_contemplacao: string | null;
+  observacoes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Investimento {
   id: string;
   categoria: string;

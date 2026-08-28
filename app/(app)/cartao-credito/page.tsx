@@ -6,10 +6,9 @@ import { formatCurrency, formatDate } from "@/components/SummaryCard";
 import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { FaturaCartao, TransacaoCartao } from "@/lib/types";
 
-// Estrutura completa pro item 7 do prompt-claude-code.md — fica FORA do menu
-// (components/Nav.tsx não referencia esta rota) e não conecta ao total de
-// Contas Variáveis/Resumo ainda. Só parser de CSV por enquanto (PDF/OFX
-// dependem do formato exato do banco/cartão, fora de escopo por agora).
+// Item 7 do prompt-claude-code.md. Ainda não conecta ao total de Contas
+// Variáveis/Resumo. Só parser de CSV por enquanto (PDF/OFX dependem do
+// formato exato do banco/cartão, fora de escopo por agora).
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -276,9 +275,9 @@ export default function CartaoCreditoPage() {
       <div>
         <h1 className="text-lg font-semibold text-neutral-900">Cartão de Crédito</h1>
         <p className="text-sm text-neutral-500">
-          Área em construção (não aparece no menu principal ainda). Importa a fatura em CSV,
-          classifica por categoria, e mostra parcelas quando a descrição indicar (ex: 3/12).
-          Ainda não soma no total de Contas Variáveis nem no Resumo.
+          Importa a fatura em CSV, classifica por categoria, e mostra parcelas quando a
+          descrição indicar (ex: 3/12). Ainda não soma no total de Contas Variáveis nem no
+          Resumo — é só pra organizar e revisar os gastos do cartão.
         </p>
       </div>
 

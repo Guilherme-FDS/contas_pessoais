@@ -15,6 +15,8 @@ const fields: FieldConfig[] = [
     label: "Status",
     type: "select",
     options: ["pendente", "negociando", "pago"],
+    default: "pendente",
+    required: true,
   },
   { name: "valor_juros", label: "Juros/Multa (R$) — se pagou com atraso", type: "number", default: "0" },
   { name: "observacoes", label: "Observações", type: "textarea" },

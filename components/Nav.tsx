@@ -10,6 +10,8 @@ const LINKS = [
   { href: "/contas-variaveis", label: "Contas Variáveis" },
   { href: "/contas-futuras", label: "Contas Futuras" },
   { href: "/investimentos", label: "Investimentos" },
+  { href: "/consorcios", label: "Consórcios" },
+  { href: "/cartao-credito", label: "Cartão de Crédito" },
 ];
 
 export default function Nav() {

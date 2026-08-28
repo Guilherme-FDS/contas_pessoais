@@ -74,15 +74,21 @@ export default function ContasFixasList() {
     return Boolean(paymentOf(item, mes)?.pago);
   }
 
-  // parcela_inicial já conta o mês de data_primeira_parcela; cada competência
-  // paga além dessa soma +1 (não incrementa em meses que ficaram em aberto).
+  function monthsBetween(from: string, to: string): number {
+    const [fy, fm] = from.split("-").map(Number);
+    const [ty, tm] = to.split("-").map(Number);
+    return (ty - fy) * 12 + (tm - fm);
+  }
+
+  // A parcela é definida pelo calendário (mês a mês desde data_primeira_parcela),
+  // não por quantos meses já foram pagos — se setembro ainda não foi pago, ele
+  // continua sendo "a parcela 20", só que em aberto (não some/regride).
   function parcelaAtual(item: ContaFixa, uptoMonth: string): number | null {
     if (!item.tem_parcelas || !item.data_primeira_parcela) return null;
     const startMonth = item.data_primeira_parcela.slice(0, 7);
-    const paidCount = allPagamentos.filter(
-      (p) => p.conta_fixa_id === item.id && p.pago && p.mes >= startMonth && p.mes <= uptoMonth
-    ).length;
-    return item.parcela_inicial + Math.max(0, paidCount - 1);
+    const elapsed = monthsBetween(startMonth, uptoMonth);
+    if (elapsed < 0) return null;
+    return item.parcela_inicial + elapsed;
   }
 
   function overdueSinceMonth(item: ContaFixa): string | null {
