@@ -482,21 +482,25 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
-          label="Falta pagar no mês"
+          label="Total de contas do mês"
+          value={totalPago + totalFalta}
+          hint="Fixas, variáveis e as futuras que você marcou para contar"
+        />
+        <SummaryCard
+          label="Já paguei"
+          value={totalPago}
+          hint="Saiu do bolso neste mês, incluindo atrasados de outros meses"
+        />
+        <SummaryCard
+          label="Falta pagar"
           value={totalFalta}
           hint="Contas que vencem neste mês e ainda estão em aberto"
         />
         <SummaryCard
-          label="Já pago no mês"
-          value={totalPago}
-          hint="Tudo que saiu do bolso neste mês, incluindo atrasados de outros meses"
-        />
-        <SummaryCard
           label="Atrasado (meses anteriores)"
           value={totalAtrasado}
-          hint="Some tudo que passou do vencimento e nunca foi pago"
+          hint="Passou do vencimento e nunca foi pago"
         />
-        <SummaryCard label="Total Investido" value={totalInvestido} />
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
@@ -567,7 +571,12 @@ export default function DashboardPage() {
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-neutral-900">Investimentos por categoria</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-900">Investimentos</h2>
+          <p className="text-xl font-semibold text-neutral-900">
+            {formatCurrency(totalInvestido)}
+          </p>
+        </div>
         {Object.keys(porCategoriaInvestimentos).length === 0 ? (
           <p className="mt-2 text-sm text-neutral-400">Nenhum investimento cadastrado.</p>
         ) : (
