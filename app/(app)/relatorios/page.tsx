@@ -16,6 +16,15 @@ function lastMonthOfYear(month: string) {
   return `${year}-12`;
 }
 
+type PresetKey = "mes" | "mes-passado" | "ano" | "ano-passado";
+
+const PRESETS: { key: PresetKey; label: string }[] = [
+  { key: "mes", label: "Este mês" },
+  { key: "mes-passado", label: "Mês passado" },
+  { key: "ano", label: "Este ano" },
+  { key: "ano-passado", label: "Ano passado" },
+];
+
 export default function RelatoriosPage() {
   const supabase = createClient();
   const [deMes, setDeMes] = useState(currentMonth());
@@ -37,24 +46,30 @@ export default function RelatoriosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deMes, ateMes]);
 
-  function applyPreset(preset: "mes" | "mes-passado" | "ano" | "ano-passado") {
+  function rangeDoPreset(preset: PresetKey): { de: string; ate: string } {
     const now = currentMonth();
-    if (preset === "mes") {
-      setDeMes(now);
-      setAteMes(now);
-    } else if (preset === "mes-passado") {
+    if (preset === "mes") return { de: now, ate: now };
+    if (preset === "mes-passado") {
       const prev = shiftMonth(now, -1);
-      setDeMes(prev);
-      setAteMes(prev);
-    } else if (preset === "ano") {
-      setDeMes(firstMonthOfYear(now));
-      setAteMes(now);
-    } else if (preset === "ano-passado") {
-      const prevYear = shiftMonth(firstMonthOfYear(now), -1);
-      setDeMes(firstMonthOfYear(prevYear));
-      setAteMes(lastMonthOfYear(prevYear));
+      return { de: prev, ate: prev };
     }
+    if (preset === "ano") return { de: firstMonthOfYear(now), ate: now };
+    const anoPassado = shiftMonth(firstMonthOfYear(now), -1);
+    return { de: firstMonthOfYear(anoPassado), ate: lastMonthOfYear(anoPassado) };
   }
+
+  function applyPreset(preset: PresetKey) {
+    const { de, ate } = rangeDoPreset(preset);
+    setDeMes(de);
+    setAteMes(ate);
+  }
+
+  // Em janeiro "este mês" e "este ano" cobrem o mesmo intervalo — o primeiro
+  // da lista vence, pra não acender dois botões ao mesmo tempo.
+  const presetAtivo = PRESETS.find((p) => {
+    const r = rangeDoPreset(p.key);
+    return r.de === deMes && r.ate === ateMes;
+  })?.key;
 
   const totalGeral = pagamentos.reduce((acc, p) => acc + p.valor + p.valor_juros, 0);
   const totalJuros = pagamentos.reduce((acc, p) => acc + p.valor_juros, 0);
@@ -117,21 +132,24 @@ export default function RelatoriosPage() {
           Gerar extrato em PDF
         </a>
         <div className="flex flex-wrap gap-2">
-          {[
-            { key: "mes" as const, label: "Este mês" },
-            { key: "mes-passado" as const, label: "Mês passado" },
-            { key: "ano" as const, label: "Este ano" },
-            { key: "ano-passado" as const, label: "Ano passado" },
-          ].map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => applyPreset(p.key)}
-              className="rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
-            >
-              {p.label}
-            </button>
-          ))}
+          {PRESETS.map((p) => {
+            const ativo = presetAtivo === p.key;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => applyPreset(p.key)}
+                aria-pressed={ativo}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  ativo
+                    ? "border-brand-600 bg-brand-600 text-white"
+                    : "border-neutral-300 text-neutral-600 hover:bg-neutral-100"
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
