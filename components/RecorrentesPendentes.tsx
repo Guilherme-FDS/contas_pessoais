@@ -60,8 +60,14 @@ export default function RecorrentesPendentes({
       data: { user },
     } = await supabase.auth.getUser();
 
+    const [ano, mesNum] = month.split("-").map(Number);
+    const ultimoDiaDoMes = new Date(ano, mesNum, 0).getDate();
+
     const novas = pendentes.map((c) => {
-      const dia = c.data.slice(8, 10);
+      // Conta que vence dia 31 em mês de 30 dias vira dia 30 — sem isso o
+      // Postgres recusa a data e o lançamento inteiro falha.
+      const diaOriginal = Number(c.data.slice(8, 10));
+      const dia = String(Math.min(diaOriginal, ultimoDiaDoMes)).padStart(2, "0");
       return {
         nome: c.nome,
         valor: c.valor,
