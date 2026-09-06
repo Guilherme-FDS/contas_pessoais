@@ -362,6 +362,8 @@ export default function DashboardPage() {
 
   const saldoDisponivel = saldoMensal ? Number(saldoMensal.valor_inicial) : null;
   const saldoAtual = saldoDisponivel !== null ? saldoDisponivel - saidaMes : null;
+  // O que sobra (ou falta) se ele quitar hoje tudo que ainda está em aberto.
+  const sobraProjetada = (saldoAtual ?? 0) - totalFalta;
 
   return (
     <div className={`space-y-8 transition-opacity ${loading ? "opacity-60" : ""}`}>
@@ -511,28 +513,56 @@ export default function DashboardPage() {
             Você ainda não lançou quanto tem disponível esse mês.
           </p>
         ) : (
-          <div className="mt-2 flex flex-wrap gap-6">
-            <div>
-              <p className="text-xs text-neutral-500">Disponível</p>
-              <p className="text-lg font-semibold text-neutral-900">
-                {formatCurrency(saldoDisponivel)}
+          <>
+            <div className="mt-2 flex flex-wrap gap-6">
+              <div>
+                <p className="text-xs text-neutral-500">Disponível</p>
+                <p className="text-lg font-semibold text-neutral-900">
+                  {formatCurrency(saldoDisponivel)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500">Já saiu</p>
+                <p className="text-lg font-semibold text-neutral-900">
+                  {formatCurrency(saidaMes)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500">Saldo atual</p>
+                <p
+                  className={`text-lg font-semibold ${
+                    (saldoAtual ?? 0) < 0 ? "text-red-600" : "text-emerald-700"
+                  }`}
+                >
+                  {formatCurrency(saldoAtual ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500">Falta pagar</p>
+                <p className="text-lg font-semibold text-neutral-900">
+                  {formatCurrency(totalFalta)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-neutral-100 pt-3">
+              <p className="text-xs text-neutral-500">
+                Se pagar tudo que está em aberto neste mês
               </p>
-            </div>
-            <div>
-              <p className="text-xs text-neutral-500">Já saiu</p>
-              <p className="text-lg font-semibold text-neutral-900">{formatCurrency(saidaMes)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-neutral-500">Saldo atual</p>
               <p
                 className={`text-lg font-semibold ${
-                  (saldoAtual ?? 0) < 0 ? "text-red-600" : "text-emerald-700"
+                  sobraProjetada < 0 ? "text-red-600" : "text-emerald-700"
                 }`}
               >
-                {formatCurrency(saldoAtual ?? 0)}
+                {formatCurrency(sobraProjetada)}
+                <span className="ml-2 text-xs font-normal text-neutral-500">
+                  {sobraProjetada < 0
+                    ? "— o saldo não cobre o que falta"
+                    : "— sobra depois de quitar tudo"}
+                </span>
               </p>
             </div>
-          </div>
+          </>
         )}
       </div>
 
