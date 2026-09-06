@@ -229,22 +229,22 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
 
   async function handlePaidToggle(item: T) {
     if (!dueStatus) return;
+    setErroBaixa(null);
     const isPaid = Boolean(item[dueStatus.paidField]);
-    if (isPaid) {
-      await supabase
-        .from(table)
-        .update({ [dueStatus.paidField]: false, pago_em: null })
-        .eq("id", item.id);
-    } else {
-      const payload: Record<string, unknown> = {
-        [dueStatus.paidField]: true,
-        pago_em: new Date().toISOString(),
-      };
-      if (dueStatus.amountField) {
-        payload.valor_pago = item[dueStatus.amountField];
-        payload.valor_juros = 0;
-      }
-      await supabase.from(table).update(payload).eq("id", item.id);
+
+    const payload: Record<string, unknown> = isPaid
+      ? { [dueStatus.paidField]: false, pago_em: null }
+      : { [dueStatus.paidField]: true, pago_em: new Date().toISOString() };
+
+    if (!isPaid && dueStatus.amountField) {
+      payload.valor_pago = item[dueStatus.amountField];
+      payload.valor_juros = 0;
+    }
+
+    const { error } = await supabase.from(table).update(payload).eq("id", item.id);
+    if (error) {
+      setErroBaixa(error.message);
+      return;
     }
     load();
   }

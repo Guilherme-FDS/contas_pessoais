@@ -188,24 +188,35 @@ export default function ContasFixasList() {
 
   async function handleTogglePaid(item: ContaFixa) {
     if (!isCurrentMonth) return;
+    setErroBaixa(null);
+
+    let error;
     if (isPaid(item, selectedMonth)) {
-      await supabase
+      ({ error } = await supabase
         .from("contas_fixas_pagamentos")
         .delete()
         .eq("conta_fixa_id", item.id)
-        .eq("mes", selectedMonth);
+        .eq("mes", selectedMonth));
     } else {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      await supabase.from("contas_fixas_pagamentos").insert({
-        conta_fixa_id: item.id,
-        mes: selectedMonth,
-        pago: true,
-        valor_pago: item.valor,
-        valor_juros: 0,
-        created_by: user?.id,
-      });
+      ({ error } = await supabase.from("contas_fixas_pagamentos").upsert(
+        {
+          conta_fixa_id: item.id,
+          mes: selectedMonth,
+          pago: true,
+          valor_pago: item.valor,
+          valor_juros: 0,
+          created_by: user?.id,
+        },
+        { onConflict: "conta_fixa_id,mes" }
+      ));
+    }
+
+    if (error) {
+      setErroBaixa(error.message);
+      return;
     }
     load();
   }

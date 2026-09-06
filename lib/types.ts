@@ -70,6 +70,14 @@ export interface ContaFutura {
   updated_at: string;
 }
 
+export interface MesFechado {
+  mes: string;
+  fechado_em: string;
+  fechado_por: string | null;
+  total_pago: number | null;
+  observacoes: string | null;
+}
+
 export interface SaldoMensal {
   id: string;
   mes: string;

@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/components/SummaryCard";
-import MonthNav, { currentMonth, monthRange } from "@/components/MonthNav";
+import MonthNav, { currentMonth, labelForMonth, monthRange } from "@/components/MonthNav";
 import { fetchPagamentos, type PagamentoRegistro } from "@/lib/pagamentos";
-import type { SaldoMensal } from "@/lib/types";
+import type { MesFechado, SaldoMensal } from "@/lib/types";
 
 export default function SaldoPage() {
   const supabase = createClient();
@@ -16,19 +16,25 @@ export default function SaldoPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingValor, setEditingValor] = useState(false);
+  const [mesFechado, setMesFechado] = useState<MesFechado | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [fechando, setFechando] = useState(false);
 
   async function load() {
     setLoading(true);
     const { start, end } = monthRange(selectedMonth);
-    const [saldoRes, registros] = await Promise.all([
+    const [saldoRes, fechamentoRes, registros] = await Promise.all([
       supabase.from("saldo_mensal").select("*").eq("mes", selectedMonth).maybeSingle(),
+      supabase.from("meses_fechados").select("*").eq("mes", selectedMonth).maybeSingle(),
       fetchPagamentos(supabase, { start, end }),
     ]);
     const saldo = (saldoRes.data ?? null) as SaldoMensal | null;
+    const fechamento = (fechamentoRes.data ?? null) as MesFechado | null;
     setSaldoMensal(saldo);
+    setMesFechado(fechamento);
     setValorInicial(saldo ? String(saldo.valor_inicial) : "");
     setPagamentos(registros);
-    setEditingValor(!saldo);
+    setEditingValor(!saldo && !fechamento);
     setLoading(false);
   }
 
@@ -40,10 +46,11 @@ export default function SaldoPage() {
   async function handleSaveValorInicial(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setErro(null);
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    await supabase
+    const { error } = await supabase
       .from("saldo_mensal")
       .upsert(
         {
@@ -54,6 +61,54 @@ export default function SaldoPage() {
         { onConflict: "mes" }
       );
     setSaving(false);
+    if (error) {
+      setErro(error.message);
+      return;
+    }
+    load();
+  }
+
+  async function handleFecharMes() {
+    if (
+      !confirm(
+        `Fechar ${labelForMonth(selectedMonth).toLowerCase()}? Depois disso, nenhum ` +
+          `pagamento com data nesse mês pode ser criado, alterado ou excluído — nem por ` +
+          `você, nem pela sua esposa. Dá pra reabrir depois se precisar.`
+      )
+    )
+      return;
+
+    setFechando(true);
+    setErro(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error } = await supabase.from("meses_fechados").insert({
+      mes: selectedMonth,
+      fechado_por: user?.id,
+      total_pago: totalSaida,
+    });
+    setFechando(false);
+    if (error) {
+      setErro(error.message);
+      return;
+    }
+    load();
+  }
+
+  async function handleReabrirMes() {
+    if (!confirm(`Reabrir ${labelForMonth(selectedMonth).toLowerCase()} para edição?`)) return;
+    setFechando(true);
+    setErro(null);
+    const { error } = await supabase
+      .from("meses_fechados")
+      .delete()
+      .eq("mes", selectedMonth);
+    setFechando(false);
+    if (error) {
+      setErro(error.message);
+      return;
+    }
     load();
   }
 
@@ -75,10 +130,52 @@ export default function SaldoPage() {
         <MonthNav month={selectedMonth} onChange={setSelectedMonth} />
       </div>
 
+      {erro && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>
+      )}
+
+      {mesFechado ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-300 bg-neutral-100 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-neutral-800">
+              Mês fechado em {formatDate(mesFechado.fechado_em)}
+              {mesFechado.total_pago != null &&
+                ` · total de ${formatCurrency(Number(mesFechado.total_pago))}`}
+            </p>
+            <p className="text-xs text-neutral-600">
+              Pagamentos com data nesse mês estão travados no banco. Reabra para editar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleReabrirMes}
+            disabled={fechando}
+            className="shrink-0 rounded-lg border border-neutral-400 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-white disabled:opacity-60"
+          >
+            {fechando ? "..." : "Reabrir mês"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3">
+          <p className="text-sm text-neutral-600">
+            Conferiu tudo de {labelForMonth(selectedMonth).toLowerCase()}? Fechar o mês
+            congela esses números para que o extrato continue batendo depois.
+          </p>
+          <button
+            type="button"
+            onClick={handleFecharMes}
+            disabled={fechando}
+            className="shrink-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
+          >
+            {fechando ? "Fechando..." : "Fechar mês"}
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <p className="text-sm text-neutral-500">Valor disponível no mês</p>
-          {editingValor ? (
+          {editingValor && !mesFechado ? (
             <form onSubmit={handleSaveValorInicial} className="mt-2 flex items-center gap-2">
               <input
                 type="number"
@@ -101,13 +198,15 @@ export default function SaldoPage() {
               <p className="text-2xl font-semibold text-neutral-900">
                 {formatCurrency(valorDisponivel)}
               </p>
-              <button
-                type="button"
-                onClick={() => setEditingValor(true)}
-                className="text-xs font-medium text-neutral-500 hover:underline"
-              >
-                Editar
-              </button>
+              {!mesFechado && (
+                <button
+                  type="button"
+                  onClick={() => setEditingValor(true)}
+                  className="text-xs font-medium text-neutral-500 hover:underline"
+                >
+                  Editar
+                </button>
+              )}
             </div>
           )}
         </div>
