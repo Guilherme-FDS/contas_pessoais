@@ -10,8 +10,11 @@ alter table public.contas_variaveis
 
 -- Garante no banco que a mesma conta recorrente não seja lançada duas vezes no
 -- mesmo mês, mesmo que duas pessoas cliquem em "lançar" ao mesmo tempo.
+-- O ::timestamp é obrigatório: sem ele o Postgres pode escolher a versão de
+-- date_trunc que depende do fuso (STABLE) e recusar o índice, derrubando o
+-- script inteiro junto — inclusive o alter table acima.
 create unique index if not exists contas_variaveis_recorrencia_mes_uidx
-  on public.contas_variaveis (recorrencia_id, (date_trunc('month', data)))
+  on public.contas_variaveis (recorrencia_id, (date_trunc('month', data::timestamp)))
   where recorrencia_id is not null;
 
 -- A primeira ocorrência de uma conta recorrente vira a "cabeça" da corrente:
