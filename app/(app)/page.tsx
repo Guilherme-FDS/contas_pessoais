@@ -62,6 +62,8 @@ export default function DashboardPage() {
   const [saldoMensal, setSaldoMensal] = useState<SaldoMensal | null>(null);
   const [pagamentosMes, setPagamentosMes] = useState<PagamentoRegistro[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pagandoKey, setPagandoKey] = useState<string | null>(null);
+  const [erroPagamento, setErroPagamento] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserName(firstName(data.user)));
@@ -112,44 +114,70 @@ export default function DashboardPage() {
     return fixasPagamentos.some((p) => p.conta_fixa_id === fixaId && p.mes === mes && p.pago);
   }
 
-  async function handlePagarFixa(fixa: ContaFixa, mes: string) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await supabase.from("contas_fixas_pagamentos").insert({
-      conta_fixa_id: fixa.id,
-      mes,
-      pago: true,
-      valor_pago: fixa.valor,
-      valor_juros: 0,
-      created_by: user?.id,
+  // Todo pagamento passa por aqui pra que uma falha (rede, RLS, constraint)
+  // apareça na tela em vez de o clique simplesmente não fazer nada.
+  async function executarPagamento(
+    key: string,
+    acao: () => PromiseLike<{ error: unknown }>
+  ) {
+    setPagandoKey(key);
+    setErroPagamento(null);
+    const { error } = await acao();
+    setPagandoKey(null);
+    if (error) {
+      const mensagem = (error as { message?: string }).message;
+      setErroPagamento(mensagem ?? "Não consegui registrar esse pagamento. Tente de novo.");
+      return;
+    }
+    load();
+  }
+
+  async function handlePagarFixa(key: string, fixa: ContaFixa, mes: string) {
+    await executarPagamento(key, async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      // upsert: se já existe linha pra (conta, mês) — clique duplo, por exemplo —
+      // atualiza em vez de estourar a unique constraint.
+      return supabase.from("contas_fixas_pagamentos").upsert(
+        {
+          conta_fixa_id: fixa.id,
+          mes,
+          pago: true,
+          valor_pago: fixa.valor,
+          valor_juros: 0,
+          created_by: user?.id,
+        },
+        { onConflict: "conta_fixa_id,mes" }
+      );
     });
-    load();
   }
 
-  async function handlePagarVariavel(v: ContaVariavel) {
-    await supabase
-      .from("contas_variaveis")
-      .update({
-        pago: true,
-        valor_pago: v.valor,
-        valor_juros: 0,
-        pago_em: new Date().toISOString(),
-      })
-      .eq("id", v.id);
-    load();
+  async function handlePagarVariavel(key: string, v: ContaVariavel) {
+    await executarPagamento(key, () =>
+      supabase
+        .from("contas_variaveis")
+        .update({
+          pago: true,
+          valor_pago: v.valor,
+          valor_juros: 0,
+          pago_em: new Date().toISOString(),
+        })
+        .eq("id", v.id)
+    );
   }
 
-  async function handlePagarFutura(f: ContaFutura) {
-    await supabase
-      .from("contas_futuras")
-      .update({
-        status: "pago",
-        valor_pago: f.valor,
-        pago_em: new Date().toISOString(),
-      })
-      .eq("id", f.id);
-    load();
+  async function handlePagarFutura(key: string, f: ContaFutura) {
+    await executarPagamento(key, () =>
+      supabase
+        .from("contas_futuras")
+        .update({
+          status: "pago",
+          valor_pago: f.valor,
+          pago_em: new Date().toISOString(),
+        })
+        .eq("id", f.id)
+    );
   }
 
   // ===== Notificações: sempre relativas a hoje, independente do mês navegado =====
@@ -158,35 +186,41 @@ export default function DashboardPage() {
   const notificacoes: Notificacao[] = [];
 
   for (const fixa of fixasAtivas) {
-    const startMonth = (fixa.data_primeira_parcela ?? fixa.created_at).slice(0, 7);
+    // Nunca cobrar competência anterior ao cadastro da conta no app: um
+    // financiamento que começou em 2020 e foi cadastrado hoje não tem 60
+    // parcelas "atrasadas" — essas foram pagas fora daqui.
+    const cadastro = fixa.created_at.slice(0, 7);
+    const primeira = fixa.data_primeira_parcela?.slice(0, 7);
+    const startMonth = primeira && primeira > cadastro ? primeira : cadastro;
     if (startMonth > realCurrentMonth) continue;
     const total = Math.min(monthsBetween(startMonth, realCurrentMonth), 60);
     for (let i = 0; i <= total; i++) {
       const mes = shiftMonth(startMonth, i);
       if (isPaidFixa(fixa.id, mes)) continue;
+      const key = `fixa-${fixa.id}-${mes}`;
       if (mes < realCurrentMonth) {
         notificacoes.push({
-          key: `fixa-${fixa.id}-${mes}`,
+          key,
           origem: "Fixa",
           nome: fixa.nome,
           valor: Number(fixa.valor),
           detalhe: `Competência ${labelForMonth(mes)}`,
           status: "vermelho",
           ordemData: mes,
-          onPagar: () => handlePagarFixa(fixa, mes),
+          onPagar: () => handlePagarFixa(key, fixa, mes),
         });
       } else if (fixa.dia_vencimento) {
         const st = dueStatusByDayOfMonth(fixa.dia_vencimento, false);
         if (st === "vermelho" || st === "laranja") {
           notificacoes.push({
-            key: `fixa-${fixa.id}-${mes}`,
+            key,
             origem: "Fixa",
             nome: fixa.nome,
             valor: Number(fixa.valor),
             detalhe: `Vence dia ${fixa.dia_vencimento}`,
             status: st,
             ordemData: mes,
-            onPagar: () => handlePagarFixa(fixa, mes),
+            onPagar: () => handlePagarFixa(key, fixa, mes),
           });
         }
       }
@@ -204,7 +238,7 @@ export default function DashboardPage() {
         detalhe: `Venceu em ${formatDate(v.data)}`,
         status: st,
         ordemData: v.data,
-        onPagar: () => handlePagarVariavel(v),
+        onPagar: () => handlePagarVariavel(`variavel-${v.id}`, v),
       });
     }
   }
@@ -221,7 +255,7 @@ export default function DashboardPage() {
         detalhe: `Previsto para ${formatDate(f.data_prevista)}`,
         status: st,
         ordemData: f.data_prevista,
-        onPagar: () => handlePagarFutura(f),
+        onPagar: () => handlePagarFutura(`futura-${f.id}`, f),
       });
     }
   }
@@ -279,35 +313,6 @@ export default function DashboardPage() {
     return acc;
   }, {});
 
-  const porCategoriaPago: Record<string, number> = {};
-  for (const f of fixasAtivas) {
-    const payment = fixasPagamentos.find(
-      (p) => p.conta_fixa_id === f.id && p.mes === selectedMonth && p.pago
-    );
-    if (payment) {
-      const cat = f.categoria ?? "Outros";
-      porCategoriaPago[cat] =
-        (porCategoriaPago[cat] ?? 0) + Number(payment.valor_pago ?? f.valor) + Number(payment.valor_juros ?? 0);
-    }
-  }
-  for (const v of variaveisMes) {
-    if (v.pago) {
-      const cat = v.categoria ?? "Outros";
-      porCategoriaPago[cat] =
-        (porCategoriaPago[cat] ?? 0) + Number(v.valor_pago ?? v.valor) + Number(v.valor_juros ?? 0);
-    }
-  }
-  for (const f of futurasMarcadas) {
-    if (f.status === "pago") {
-      const cat = f.categoria ?? "Outros";
-      porCategoriaPago[cat] =
-        (porCategoriaPago[cat] ?? 0) + Number(f.valor_pago ?? f.valor) + Number(f.valor_juros ?? 0);
-    }
-  }
-  const categoryData = Object.entries(porCategoriaPago)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-
   const saldoDisponivel = saldoMensal ? Number(saldoMensal.valor_inicial) : null;
   const saidaMes = pagamentosMes.reduce((acc, p) => acc + p.valor + p.valor_juros, 0);
   const saldoAtual = saldoDisponivel !== null ? saldoDisponivel - saidaMes : null;
@@ -332,6 +337,11 @@ export default function DashboardPage() {
             Sempre em relação a hoje — independe do mês que você está navegando
           </p>
         </div>
+        {erroPagamento && (
+          <p className="border-b border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700">
+            {erroPagamento}
+          </p>
+        )}
         {notificacoes.length === 0 ? (
           <p className="px-5 py-6 text-sm text-neutral-400">
             Nada vencido nem vencendo hoje. Tudo em dia!
@@ -359,9 +369,10 @@ export default function DashboardPage() {
                   </span>
                   <button
                     onClick={n.onPagar}
-                    className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                    disabled={pagandoKey === n.key}
+                    className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
                   >
-                    Marcar pago
+                    {pagandoKey === n.key ? "Salvando..." : "Marcar pago"}
                   </button>
                 </div>
               </li>
@@ -427,40 +438,20 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-neutral-900">Pago por categoria no mês</h2>
-          {categoryData.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-400">
-              Nada pago ainda em {labelForMonth(selectedMonth).toLowerCase()}.
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {categoryData.map((c) => (
-                <li key={c.name} className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-600">{c.name}</span>
-                  <span className="font-medium text-neutral-900">{formatCurrency(c.value)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-neutral-900">Investimentos por categoria</h2>
-          {Object.keys(porCategoriaInvestimentos).length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-400">Nenhum investimento cadastrado.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {Object.entries(porCategoriaInvestimentos).map(([categoria, valor]) => (
-                <li key={categoria} className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-600">{categoria}</span>
-                  <span className="font-medium text-neutral-900">{formatCurrency(valor)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-neutral-900">Investimentos por categoria</h2>
+        {Object.keys(porCategoriaInvestimentos).length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-400">Nenhum investimento cadastrado.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {Object.entries(porCategoriaInvestimentos).map(([categoria, valor]) => (
+              <li key={categoria} className="flex items-center justify-between text-sm">
+                <span className="text-neutral-600">{categoria}</span>
+                <span className="font-medium text-neutral-900">{formatCurrency(valor)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

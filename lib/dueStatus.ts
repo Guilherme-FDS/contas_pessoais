@@ -26,10 +26,19 @@ export function dueStatusByDayOfMonth(diaVencimento: number | null, paid: boolea
   return "verde";
 }
 
+// toISOString() converte pra UTC: no Brasil (UTC-3), das 21h à meia-noite ele
+// devolve a data de amanhã e a conta que vence hoje aparece como atrasada.
+export function todayLocalISO(): string {
+  const now = new Date();
+  const mes = String(now.getMonth() + 1).padStart(2, "0");
+  const dia = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${mes}-${dia}`;
+}
+
 export function dueStatusByDate(dateStr: string | null, paid: boolean): DueStatus {
   if (paid) return "pago";
   if (!dateStr) return "neutro";
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayLocalISO();
   const due = dateStr.slice(0, 10);
   if (due < todayStr) return "vermelho";
   if (due === todayStr) return "laranja";
