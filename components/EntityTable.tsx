@@ -48,6 +48,7 @@ interface EntityTableProps<T extends { id: string }> {
     paidField: keyof T & string;
     amountField?: keyof T & string;
   };
+  paidStatusConfig?: { field: keyof T & string; value: string };
   sortableFields?: (keyof T & string)[];
   filterFields?: FilterFieldConfig<T>[];
   emptyLabel?: string;
@@ -83,6 +84,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   statusReactivateLabel = "Reativar",
   monthFilter,
   dueStatus,
+  paidStatusConfig,
   sortableFields,
   filterFields,
   emptyLabel = "Nenhum item cadastrado ainda.",
@@ -155,6 +157,15 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
       }
     }
 
+    if (paidStatusConfig) {
+      const key = paidStatusConfig.field;
+      const isPaidNow = payload[key] === paidStatusConfig.value;
+      const prevItem = editingId ? items.find((i) => i.id === editingId) : null;
+      const wasPaid = prevItem ? prevItem[key] === paidStatusConfig.value : false;
+      if (isPaidNow && !wasPaid) payload.pago_em = new Date().toISOString();
+      if (!isPaidNow && wasPaid) payload.pago_em = null;
+    }
+
     if (editingId) {
       const { error } = await supabase.from(table).update(payload).eq("id", editingId);
       if (error) {
@@ -202,10 +213,13 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     if (isPaid) {
       await supabase
         .from(table)
-        .update({ [dueStatus.paidField]: false })
+        .update({ [dueStatus.paidField]: false, pago_em: null })
         .eq("id", item.id);
     } else {
-      const payload: Record<string, unknown> = { [dueStatus.paidField]: true };
+      const payload: Record<string, unknown> = {
+        [dueStatus.paidField]: true,
+        pago_em: new Date().toISOString(),
+      };
       if (dueStatus.amountField) {
         payload.valor_pago = item[dueStatus.amountField];
         payload.valor_juros = 0;

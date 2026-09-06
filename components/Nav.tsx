@@ -9,9 +9,12 @@ const LINKS = [
   { href: "/contas-fixas", label: "Contas Fixas", short: "Fixas" },
   { href: "/contas-variaveis", label: "Contas Variáveis", short: "Variáveis" },
   { href: "/contas-futuras", label: "Contas Futuras", short: "Futuras" },
+  { href: "/saldo", label: "Saldo", short: "Saldo" },
+  { href: "/relatorios", label: "Relatórios", short: "Relatórios" },
   { href: "/investimentos", label: "Investimentos", short: "Invest." },
   { href: "/consorcios", label: "Consórcios", short: "Consórcios" },
-  { href: "/cartao-credito", label: "Cartão de Crédito", short: "Cartão" },
+  // Cartão de Crédito em stand-by: página segue em app/(app)/cartao-credito
+  // (não integrada ao total do app ainda), só tirada do menu por enquanto.
 ];
 
 export default function Nav() {

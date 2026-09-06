@@ -48,6 +48,7 @@ export default function ContasFuturasPage() {
         sumFilter={(item) => item.incluir_soma}
         sumLabel="Total marcado para pagar"
         toggleField="incluir_soma"
+        paidStatusConfig={{ field: "status", value: "pago" }}
         orderBy="data_prevista"
         ascending={true}
         sortableFields={["valor"]}

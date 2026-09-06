@@ -45,6 +45,7 @@ export interface ContaVariavel {
   pago: boolean;
   valor_pago: number | null;
   valor_juros: number;
+  pago_em: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -61,6 +62,16 @@ export interface ContaFutura {
   observacoes: string | null;
   valor_pago: number | null;
   valor_juros: number;
+  pago_em: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaldoMensal {
+  id: string;
+  mes: string;
+  valor_inicial: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
