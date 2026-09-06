@@ -19,6 +19,11 @@ const fields: FieldConfig[] = [
     required: true,
   },
   { name: "valor_juros", label: "Juros/Multa (R$) — se pagou com atraso", type: "number", default: "0" },
+  {
+    name: "pago_em",
+    label: "Data do pagamento (define o mês do gasto no Saldo/Relatórios)",
+    type: "date",
+  },
   { name: "observacoes", label: "Observações", type: "textarea" },
 ];
 

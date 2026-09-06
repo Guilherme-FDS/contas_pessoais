@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import SummaryCard, { formatCurrency, formatDate } from "@/components/SummaryCard";
 import MonthNav, { currentMonth, labelForMonth, monthRange, shiftMonth } from "@/components/MonthNav";
-import { dueStatusByDate, dueStatusByDayOfMonth, DUE_STATUS_STYLES } from "@/lib/dueStatus";
+import {
+  dueStatusByDate,
+  dueStatusByDayOfMonth,
+  todayLocalISO,
+  DUE_STATUS_STYLES,
+} from "@/lib/dueStatus";
 import { fetchPagamentos, type PagamentoRegistro } from "@/lib/pagamentos";
 import type {
   ContaFixa,
@@ -45,12 +50,17 @@ interface Notificacao {
   detalhe: string;
   status: "vermelho" | "laranja";
   ordemData: string;
-  onPagar: () => void;
+  // Competência de mês passado quase sempre é regularização de algo pago fora
+  // do app — nesses casos perguntamos a data em vez de assumir hoje, senão o
+  // gasto antigo entra no relatório do mês atual.
+  perguntarData: boolean;
+  pagarCom: (dataPagamento: string) => Promise<void>;
 }
 
 export default function DashboardPage() {
   const supabase = createClient();
   const realCurrentMonth = currentMonth();
+  const LIMITE_ATRASO = shiftMonth(realCurrentMonth, -24);
   const [selectedMonth, setSelectedMonth] = useState(realCurrentMonth);
   const [userName, setUserName] = useState("");
   const [fixas, setFixas] = useState<ContaFixa[]>([]);
@@ -64,11 +74,19 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [pagandoKey, setPagandoKey] = useState<string | null>(null);
   const [erroPagamento, setErroPagamento] = useState<string | null>(null);
+  const [perguntandoData, setPerguntandoData] = useState<Notificacao | null>(null);
+  const [dataPagamento, setDataPagamento] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserName(firstName(data.user)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Atrasos são procurados até 24 meses atrás. A busca e o laço de notificações
+  // usam a mesma janela: se buscássemos menos do que percorremos, mês sem
+  // pagamento carregado viraria "atrasado" falso.
+  const janelaInicio =
+    selectedMonth < LIMITE_ATRASO ? selectedMonth : LIMITE_ATRASO;
 
   async function load() {
     setLoading(true);
@@ -84,7 +102,9 @@ export default function DashboardPage() {
       registrosMes,
     ] = await Promise.all([
       supabase.from("contas_fixas").select("*"),
-      supabase.from("contas_fixas_pagamentos").select("*"),
+      // Só o histórico dentro da janela que a tela realmente usa — sem isso a
+      // consulta cresce pra sempre e o Resumo fica mais lento a cada mês.
+      supabase.from("contas_fixas_pagamentos").select("*").gte("mes", janelaInicio),
       supabase.from("contas_variaveis").select("*").gte("data", start).lt("data", end),
       supabase.from("contas_variaveis").select("*").eq("pago", false),
       supabase.from("contas_futuras").select("*").order("data_prevista", { ascending: true }),
@@ -110,8 +130,18 @@ export default function DashboardPage() {
 
   const fixasAtivas = fixas.filter((f) => f.ativo);
 
+  // Índice (conta|mês) pra consulta O(1): o laço de notificações chega a
+  // milhares de checagens e varrer o array inteiro em cada uma custa caro.
+  const pagamentosIndex = useMemo(
+    () =>
+      new Set(
+        fixasPagamentos.filter((p) => p.pago).map((p) => `${p.conta_fixa_id}|${p.mes}`)
+      ),
+    [fixasPagamentos]
+  );
+
   function isPaidFixa(fixaId: string, mes: string) {
-    return fixasPagamentos.some((p) => p.conta_fixa_id === fixaId && p.mes === mes && p.pago);
+    return pagamentosIndex.has(`${fixaId}|${mes}`);
   }
 
   // Todo pagamento passa por aqui pra que uma falha (rede, RLS, constraint)
@@ -132,7 +162,12 @@ export default function DashboardPage() {
     load();
   }
 
-  async function handlePagarFixa(key: string, fixa: ContaFixa, mes: string) {
+  async function handlePagarFixa(
+    key: string,
+    fixa: ContaFixa,
+    mes: string,
+    pagoEm: string
+  ) {
     await executarPagamento(key, async () => {
       const {
         data: { user },
@@ -146,6 +181,7 @@ export default function DashboardPage() {
           pago: true,
           valor_pago: fixa.valor,
           valor_juros: 0,
+          pago_em: pagoEm,
           created_by: user?.id,
         },
         { onConflict: "conta_fixa_id,mes" }
@@ -153,7 +189,7 @@ export default function DashboardPage() {
     });
   }
 
-  async function handlePagarVariavel(key: string, v: ContaVariavel) {
+  async function handlePagarVariavel(key: string, v: ContaVariavel, pagoEm: string) {
     await executarPagamento(key, () =>
       supabase
         .from("contas_variaveis")
@@ -161,23 +197,40 @@ export default function DashboardPage() {
           pago: true,
           valor_pago: v.valor,
           valor_juros: 0,
-          pago_em: new Date().toISOString(),
+          pago_em: pagoEm,
         })
         .eq("id", v.id)
     );
   }
 
-  async function handlePagarFutura(key: string, f: ContaFutura) {
+  async function handlePagarFutura(key: string, f: ContaFutura, pagoEm: string) {
     await executarPagamento(key, () =>
       supabase
         .from("contas_futuras")
         .update({
           status: "pago",
           valor_pago: f.valor,
-          pago_em: new Date().toISOString(),
+          pago_em: pagoEm,
         })
         .eq("id", f.id)
     );
+  }
+
+  function acionarPagamento(n: Notificacao) {
+    if (n.perguntarData) {
+      setDataPagamento(todayLocalISO());
+      setPerguntandoData(n);
+      return;
+    }
+    n.pagarCom(todayLocalISO());
+  }
+
+  async function confirmarPagamentoComData(e: React.FormEvent) {
+    e.preventDefault();
+    if (!perguntandoData) return;
+    const alvo = perguntandoData;
+    setPerguntandoData(null);
+    await alvo.pagarCom(dataPagamento);
   }
 
   // ===== Notificações: sempre relativas a hoje, independente do mês navegado =====
@@ -191,7 +244,8 @@ export default function DashboardPage() {
     // parcelas "atrasadas" — essas foram pagas fora daqui.
     const cadastro = fixa.created_at.slice(0, 7);
     const primeira = fixa.data_primeira_parcela?.slice(0, 7);
-    const startMonth = primeira && primeira > cadastro ? primeira : cadastro;
+    const inicio = primeira && primeira > cadastro ? primeira : cadastro;
+    const startMonth = inicio < LIMITE_ATRASO ? LIMITE_ATRASO : inicio;
     if (startMonth > realCurrentMonth) continue;
     const total = Math.min(monthsBetween(startMonth, realCurrentMonth), 60);
     for (let i = 0; i <= total; i++) {
@@ -207,7 +261,8 @@ export default function DashboardPage() {
           detalhe: `Competência ${labelForMonth(mes)}`,
           status: "vermelho",
           ordemData: mes,
-          onPagar: () => handlePagarFixa(key, fixa, mes),
+          perguntarData: true,
+          pagarCom: (pagoEm) => handlePagarFixa(key, fixa, mes, pagoEm),
         });
       } else if (fixa.dia_vencimento) {
         const st = dueStatusByDayOfMonth(fixa.dia_vencimento, false);
@@ -220,7 +275,8 @@ export default function DashboardPage() {
             detalhe: `Vence dia ${fixa.dia_vencimento}`,
             status: st,
             ordemData: mes,
-            onPagar: () => handlePagarFixa(key, fixa, mes),
+            perguntarData: false,
+            pagarCom: (pagoEm) => handlePagarFixa(key, fixa, mes, pagoEm),
           });
         }
       }
@@ -238,7 +294,8 @@ export default function DashboardPage() {
         detalhe: `Venceu em ${formatDate(v.data)}`,
         status: st,
         ordemData: v.data,
-        onPagar: () => handlePagarVariavel(`variavel-${v.id}`, v),
+        perguntarData: v.data.slice(0, 7) < realCurrentMonth,
+        pagarCom: (pagoEm) => handlePagarVariavel(`variavel-${v.id}`, v, pagoEm),
       });
     }
   }
@@ -255,7 +312,8 @@ export default function DashboardPage() {
         detalhe: `Previsto para ${formatDate(f.data_prevista)}`,
         status: st,
         ordemData: f.data_prevista,
-        onPagar: () => handlePagarFutura(`futura-${f.id}`, f),
+        perguntarData: f.data_prevista.slice(0, 7) < realCurrentMonth,
+        pagarCom: (pagoEm) => handlePagarFutura(`futura-${f.id}`, f, pagoEm),
       });
     }
   }
@@ -368,7 +426,7 @@ export default function DashboardPage() {
                     {formatCurrency(n.valor)}
                   </span>
                   <button
-                    onClick={n.onPagar}
+                    onClick={() => acionarPagamento(n)}
                     disabled={pagandoKey === n.key}
                     className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
                   >
@@ -380,6 +438,50 @@ export default function DashboardPage() {
           </ul>
         )}
       </div>
+
+      {perguntandoData && (
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 px-4"
+          onClick={() => setPerguntandoData(null)}
+        >
+          <form
+            onSubmit={confirmarPagamentoComData}
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-neutral-900">
+              Quando você pagou {perguntandoData.nome}?
+            </h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              {perguntandoData.detalhe}. Essa data define em qual mês o gasto aparece no
+              Saldo e nos Relatórios — se a conta já tinha sido paga antes, coloque a data
+              real do pagamento.
+            </p>
+            <input
+              type="date"
+              required
+              value={dataPagamento}
+              onChange={(e) => setDataPagamento(e.target.value)}
+              className="mt-4 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPerguntandoData(null)}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                Confirmar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-neutral-900">

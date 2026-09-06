@@ -7,7 +7,7 @@ import MonthNav, { currentMonth, monthRange } from "@/components/MonthNav";
 import { dueStatusByDate, DUE_STATUS_LABELS, type DueStatus } from "@/lib/dueStatus";
 import DueStatusBadge, { DueStatusLegend } from "@/components/DueStatusBadge";
 
-export type FieldType = "text" | "number" | "date" | "select" | "textarea";
+export type FieldType = "text" | "number" | "date" | "select" | "textarea" | "checkbox";
 
 export interface FieldConfig {
   name: string;
@@ -49,6 +49,8 @@ interface EntityTableProps<T extends { id: string }> {
     amountField?: keyof T & string;
   };
   paidStatusConfig?: { field: keyof T & string; value: string };
+  // Slot pra conteúdo que depende do mês selecionado (que é estado interno daqui).
+  renderAboveTable?: (month: string, reload: () => void) => React.ReactNode;
   sortableFields?: (keyof T & string)[];
   filterFields?: FilterFieldConfig<T>[];
   emptyLabel?: string;
@@ -85,6 +87,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   monthFilter,
   dueStatus,
   paidStatusConfig,
+  renderAboveTable,
   sortableFields,
   filterFields,
   emptyLabel = "Nenhum item cadastrado ainda.",
@@ -105,6 +108,9 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [dueStatusFilter, setDueStatusFilter] = useState<string>("");
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [baixando, setBaixando] = useState(false);
+  const [erroBaixa, setErroBaixa] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -115,6 +121,7 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     }
     const { data, error } = await query;
     if (!error && data) setItems(data as T[]);
+    setSelecionados([]);
     setLoading(false);
   }
 
@@ -134,7 +141,18 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     const values: Record<string, string> = {};
     for (const f of fields) {
       const raw = item[f.name];
-      values[f.name] = raw === null || raw === undefined ? "" : String(raw);
+      if (f.type === "checkbox") {
+        values[f.name] = raw ? "true" : "";
+      } else if (raw === null || raw === undefined) {
+        values[f.name] = "";
+      } else if (f.type === "date") {
+        // colunas timestamptz chegam como "2026-09-06T14:32:00+00:00" e o input
+        // type=date só entende "2026-09-06" — sem o corte ele renderiza vazio e
+        // o save apagaria a data.
+        values[f.name] = String(raw).slice(0, 10);
+      } else {
+        values[f.name] = String(raw);
+      }
     }
     setEditingId(item.id);
     setFormValues(values);
@@ -150,7 +168,9 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     const payload: Record<string, unknown> = {};
     for (const f of fields) {
       const raw = formValues[f.name] || f.default || "";
-      if (f.type === "number") {
+      if (f.type === "checkbox") {
+        payload[f.name] = raw === "true";
+      } else if (f.type === "number") {
         payload[f.name] = raw === "" ? null : Number(raw);
       } else {
         payload[f.name] = raw === "" ? null : raw;
@@ -229,6 +249,39 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     load();
   }
 
+  // Baixa em lote: marca de uma vez todas as selecionadas que ainda não foram pagas.
+  async function handleBaixaEmLote() {
+    if (!dueStatus || selecionados.length === 0) return;
+    setBaixando(true);
+    setErroBaixa(null);
+
+    const agora = new Date().toISOString();
+    const alvos = items.filter(
+      (i) => selecionados.includes(i.id) && !Boolean(i[dueStatus.paidField])
+    );
+
+    for (const item of alvos) {
+      const payload: Record<string, unknown> = {
+        [dueStatus.paidField]: true,
+        pago_em: agora,
+      };
+      if (dueStatus.amountField) {
+        payload.valor_pago = item[dueStatus.amountField];
+        payload.valor_juros = 0;
+      }
+      const { error } = await supabase.from(table).update(payload).eq("id", item.id);
+      if (error) {
+        setErroBaixa(`Falhou em "${String(item.nome ?? item.id)}": ${error.message}`);
+        setBaixando(false);
+        load();
+        return;
+      }
+    }
+
+    setBaixando(false);
+    load();
+  }
+
   async function handleStatusChange(item: T, value: boolean) {
     if (!statusField) return;
     await supabase
@@ -304,6 +357,29 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
     : null;
 
   const hasActiveFilters = activeFilterEntries.length > 0 || Boolean(dueStatusFilter);
+
+  // Só faz sentido selecionar em lote o que ainda não foi pago.
+  const selecionaveis = dueStatus
+    ? visibleItems.filter((i) => !Boolean(i[dueStatus.paidField]))
+    : [];
+  const todosSelecionados =
+    selecionaveis.length > 0 && selecionaveis.every((i) => selecionados.includes(i.id));
+
+  function toggleSelecionarTodos() {
+    setSelecionados(todosSelecionados ? [] : selecionaveis.map((i) => i.id));
+  }
+
+  function toggleSelecionado(id: string) {
+    setSelecionados((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]
+    );
+  }
+
+  const totalSelecionado = dueStatus
+    ? items
+        .filter((i) => selecionados.includes(i.id))
+        .reduce((acc, i) => acc + (Number(i[sumField as keyof T & string]) || 0), 0)
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -403,6 +479,23 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
             <div className="mt-4 flex-1 space-y-3 overflow-y-auto px-6">
               {fields.map((f) => (
                 <div key={f.name}>
+                  {f.type === "checkbox" ? (
+                    <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
+                      <input
+                        type="checkbox"
+                        checked={formValues[f.name] === "true"}
+                        onChange={(e) =>
+                          setFormValues((v) => ({
+                            ...v,
+                            [f.name]: e.target.checked ? "true" : "",
+                          }))
+                        }
+                        className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      {f.label}
+                    </label>
+                  ) : (
+                    <>
                   <label className="block text-sm font-medium text-neutral-700">
                     {f.label}
                   </label>
@@ -443,6 +536,8 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     />
                   )}
+                    </>
+                  )}
                 </div>
               ))}
               {error && <p className="text-sm text-red-600">{error}</p>}
@@ -468,10 +563,54 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
         </div>
       )}
 
+      {renderAboveTable?.(selectedMonth, load)}
+
+      {erroBaixa && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erroBaixa}</p>
+      )}
+
+      {dueStatus && selecionados.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+          <p className="text-sm text-neutral-700">
+            <span className="font-semibold">{selecionados.length}</span> selecionada(s) ·{" "}
+            {formatCurrency(totalSelecionado)}
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSelecionados([])}
+              className="text-xs font-medium text-neutral-600 hover:underline"
+            >
+              Limpar seleção
+            </button>
+            <button
+              type="button"
+              onClick={handleBaixaEmLote}
+              disabled={baixando}
+              className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {baixando ? "Baixando..." : "Marcar como pagas"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-neutral-200 text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-neutral-400">
+              {dueStatus && (
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={todosSelecionados}
+                    onChange={toggleSelecionarTodos}
+                    disabled={selecionaveis.length === 0}
+                    aria-label="Selecionar todas"
+                    className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 disabled:opacity-40"
+                  />
+                </th>
+              )}
               {toggleField && <th className="px-4 py-3">Incluir</th>}
               {dueStatus && (
                 <>
@@ -509,19 +648,31 @@ export default function EntityTable<T extends { id: string; [key: string]: any }
           <tbody className="divide-y divide-neutral-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2 + (dueStatus ? 2 : 0)}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2 + (dueStatus ? 3 : 0)}>
                   Carregando...
                 </td>
               </tr>
             ) : visibleItems.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2 + (dueStatus ? 2 : 0)}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={columns.length + 2 + (dueStatus ? 3 : 0)}>
                   {showInactive ? "Nenhuma conta quitada ainda." : emptyLabel}
                 </td>
               </tr>
             ) : (
               visibleItems.map((item) => (
                 <tr key={item.id} className="hover:bg-neutral-50">
+                  {dueStatus && (
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selecionados.includes(item.id)}
+                        disabled={Boolean(item[dueStatus.paidField])}
+                        onChange={() => toggleSelecionado(item.id)}
+                        aria-label={`Selecionar ${String(item.nome ?? "")}`}
+                        className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 disabled:opacity-40"
+                      />
+                    </td>
+                  )}
                   {toggleField && (
                     <td className="px-4 py-3">
                       <input

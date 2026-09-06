@@ -22,7 +22,7 @@ function emptyForm() {
 }
 
 function emptyPaymentForm() {
-  return { valor_pago: "", valor_juros: "0" };
+  return { valor_pago: "", valor_juros: "0", pago_em: "" };
 }
 
 export default function ContasFixasList() {
@@ -47,6 +47,9 @@ export default function ContasFixasList() {
   const [paymentFor, setPaymentFor] = useState<ContaFixa | null>(null);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
   const [savingPayment, setSavingPayment] = useState(false);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [baixando, setBaixando] = useState(false);
+  const [erroBaixa, setErroBaixa] = useState<string | null>(null);
 
   const isCurrentMonth = selectedMonth === currentMonth();
 
@@ -58,6 +61,7 @@ export default function ContasFixasList() {
     ]);
     setItems((contasRes.data ?? []) as ContaFixa[]);
     setAllPagamentos((pagamentosRes.data ?? []) as ContaFixaPagamento[]);
+    setSelecionados([]);
     setLoading(false);
   }
 
@@ -206,11 +210,44 @@ export default function ContasFixasList() {
     load();
   }
 
+  async function handleBaixaEmLote() {
+    if (!isCurrentMonth || selecionados.length === 0) return;
+    setBaixando(true);
+    setErroBaixa(null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const alvos = items.filter(
+      (i) => selecionados.includes(i.id) && !isPaid(i, selectedMonth)
+    );
+
+    const { error } = await supabase.from("contas_fixas_pagamentos").upsert(
+      alvos.map((item) => ({
+        conta_fixa_id: item.id,
+        mes: selectedMonth,
+        pago: true,
+        valor_pago: item.valor,
+        valor_juros: 0,
+        created_by: user?.id,
+      })),
+      { onConflict: "conta_fixa_id,mes" }
+    );
+
+    setBaixando(false);
+    if (error) {
+      setErroBaixa(error.message);
+      return;
+    }
+    load();
+  }
+
   function openPaymentEdit(item: ContaFixa) {
     const payment = paymentOf(item, selectedMonth);
     setPaymentForm({
       valor_pago: payment?.valor_pago != null ? String(payment.valor_pago) : String(item.valor),
       valor_juros: payment?.valor_juros != null ? String(payment.valor_juros) : "0",
+      pago_em: payment?.pago_em ? payment.pago_em.slice(0, 10) : "",
     });
     setPaymentFor(item);
   }
@@ -224,6 +261,7 @@ export default function ContasFixasList() {
       .update({
         valor_pago: Number(paymentForm.valor_pago),
         valor_juros: Number(paymentForm.valor_juros) || 0,
+        ...(paymentForm.pago_em ? { pago_em: paymentForm.pago_em } : {}),
       })
       .eq("conta_fixa_id", paymentFor.id)
       .eq("mes", selectedMonth);
@@ -275,6 +313,26 @@ export default function ContasFixasList() {
   ).sort((a, b) => a - b);
 
   const hasActiveFilters = Boolean(filterCategoria || filterVencimento);
+
+  // Baixa em lote só no mês atual, mesma regra do "Paguei" individual.
+  const selecionaveis = isCurrentMonth
+    ? sorted.filter((item) => !isPaid(item, selectedMonth))
+    : [];
+  const todosSelecionados =
+    selecionaveis.length > 0 && selecionaveis.every((i) => selecionados.includes(i.id));
+  const totalSelecionado = items
+    .filter((i) => selecionados.includes(i.id))
+    .reduce((acc, i) => acc + Number(i.valor), 0);
+
+  function toggleSelecionarTodos() {
+    setSelecionados(todosSelecionados ? [] : selecionaveis.map((i) => i.id));
+  }
+
+  function toggleSelecionado(id: string) {
+    setSelecionados((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -496,10 +554,50 @@ export default function ContasFixasList() {
         </div>
       )}
 
+      {erroBaixa && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erroBaixa}</p>
+      )}
+
+      {selecionados.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+          <p className="text-sm text-neutral-700">
+            <span className="font-semibold">{selecionados.length}</span> selecionada(s) ·{" "}
+            {formatCurrency(totalSelecionado)}
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSelecionados([])}
+              className="text-xs font-medium text-neutral-600 hover:underline"
+            >
+              Limpar seleção
+            </button>
+            <button
+              type="button"
+              onClick={handleBaixaEmLote}
+              disabled={baixando}
+              className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {baixando ? "Baixando..." : "Marcar como pagas"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-neutral-200 text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-neutral-400">
+              <th className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={todosSelecionados}
+                  onChange={toggleSelecionarTodos}
+                  disabled={selecionaveis.length === 0}
+                  aria-label="Selecionar todas"
+                  className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 disabled:opacity-40"
+                />
+              </th>
               <th className="px-4 py-3">Paguei</th>
               <th className="px-4 py-3">Nome</th>
               <th className="px-4 py-3">
@@ -525,13 +623,13 @@ export default function ContasFixasList() {
           <tbody className="divide-y divide-neutral-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={7}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={8}>
                   Carregando...
                 </td>
               </tr>
             ) : sorted.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-400" colSpan={7}>
+                <td className="px-4 py-6 text-neutral-400" colSpan={8}>
                   {showInactive ? "Nenhuma conta quitada ainda." : "Nenhum item cadastrado ainda."}
                 </td>
               </tr>
@@ -549,6 +647,16 @@ export default function ContasFixasList() {
                 const overdueSince = overdueSinceMonth(item);
                 return (
                   <tr key={item.id} className="hover:bg-neutral-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selecionados.includes(item.id)}
+                        disabled={!isCurrentMonth || paid}
+                        onChange={() => toggleSelecionado(item.id)}
+                        aria-label={`Selecionar ${item.nome}`}
+                        className="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 disabled:opacity-40"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
@@ -602,7 +710,7 @@ export default function ContasFixasList() {
                       {item.categoria ?? "-"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {isCurrentMonth && paid && (
+                      {paid && (
                         <button
                           onClick={() => openPaymentEdit(item)}
                           className="mr-3 text-xs font-medium text-neutral-600 hover:underline"
@@ -694,6 +802,21 @@ export default function ContasFixasList() {
                   }
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">
+                  Data do pagamento
+                </label>
+                <input
+                  type="date"
+                  value={paymentForm.pago_em}
+                  onChange={(e) => setPaymentForm((v) => ({ ...v, pago_em: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  É essa data que define em qual mês o gasto aparece no Saldo e nos
+                  Relatórios. Corrija aqui se a conta foi paga antes de existir o app.
+                </p>
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">

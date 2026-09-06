@@ -1,6 +1,7 @@
 "use client";
 
 import EntityTable, { ColumnConfig, FieldConfig } from "@/components/EntityTable";
+import RecorrentesPendentes from "@/components/RecorrentesPendentes";
 import { formatCurrency, formatDate } from "@/components/SummaryCard";
 import { CATEGORIAS_CONTAS } from "@/lib/categorias";
 import type { ContaVariavel } from "@/lib/types";
@@ -11,6 +12,12 @@ const fields: FieldConfig[] = [
   { name: "data", label: "Data", type: "date", required: true },
   { name: "categoria", label: "Categoria", type: "select", options: CATEGORIAS_CONTAS },
   { name: "valor_juros", label: "Juros/Multa (R$)", type: "number", default: "0" },
+  {
+    name: "pago_em",
+    label: "Data do pagamento (define o mês do gasto no Saldo/Relatórios)",
+    type: "date",
+  },
+  { name: "recorrente", label: "Repete todo mês (luz, água, internet...)", type: "checkbox" },
 ];
 
 const columns: ColumnConfig<ContaVariavel>[] = [
@@ -40,6 +47,9 @@ export default function ContasVariaveisPage() {
         orderBy="data"
         ascending={false}
         monthFilter={{ field: "data" }}
+        renderAboveTable={(month, reload) => (
+          <RecorrentesPendentes month={month} onLancado={reload} />
+        )}
         sortableFields={["valor", "data"]}
         filterFields={[
           { field: "categoria", label: "Categoria" },

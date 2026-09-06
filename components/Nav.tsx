@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -32,9 +33,12 @@ export default function Nav() {
     <header className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2.5 sm:py-3">
         <Link href="/" className="flex min-w-0 items-center gap-2">
-          <img
+          <Image
             src="/familia-silva.jpg"
             alt="Família Silva"
+            width={96}
+            height={96}
+            priority
             className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-brand-100 sm:h-12 sm:w-12"
           />
           <span className="truncate text-xs font-semibold text-neutral-900 sm:text-sm">

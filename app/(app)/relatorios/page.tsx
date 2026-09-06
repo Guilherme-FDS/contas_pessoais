@@ -59,16 +59,6 @@ export default function RelatoriosPage() {
   const totalGeral = pagamentos.reduce((acc, p) => acc + p.valor + p.valor_juros, 0);
   const totalJuros = pagamentos.reduce((acc, p) => acc + p.valor_juros, 0);
 
-  const porCategoria = Object.entries(
-    pagamentos.reduce<Record<string, number>>((acc, p) => {
-      const cat = p.categoria ?? "Outros";
-      acc[cat] = (acc[cat] ?? 0) + p.valor + p.valor_juros;
-      return acc;
-    }, {})
-  )
-    .map(([nome, valor]) => ({ nome, valor }))
-    .sort((a, b) => b.valor - a.valor);
-
   const porOrigem = Object.entries(
     pagamentos.reduce<Record<string, number>>((acc, p) => {
       acc[p.origem] = (acc[p.origem] ?? 0) + p.valor + p.valor_juros;
@@ -118,6 +108,14 @@ export default function RelatoriosPage() {
             className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-sm text-neutral-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
+        <a
+          href={`/extrato?de=${deMes}&ate=${ateMes}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          Gerar extrato em PDF
+        </a>
         <div className="flex flex-wrap gap-2">
           {[
             { key: "mes" as const, label: "Este mês" },
@@ -156,38 +154,20 @@ export default function RelatoriosPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-neutral-900">Por categoria</h2>
-          {porCategoria.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-400">Nada pago nesse período.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {porCategoria.map((c) => (
-                <li key={c.nome} className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-600">{c.nome}</span>
-                  <span className="font-medium text-neutral-900">{formatCurrency(c.valor)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-neutral-900">Por tipo de conta</h2>
-          {porOrigem.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-400">Nada pago nesse período.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {porOrigem.map((o) => (
-                <li key={o.nome} className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-600">{o.nome}</span>
-                  <span className="font-medium text-neutral-900">{formatCurrency(o.valor)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-neutral-900">Por tipo de conta</h2>
+        {porOrigem.length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-400">Nada pago nesse período.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {porOrigem.map((o) => (
+              <li key={o.nome} className="flex items-center justify-between text-sm">
+                <span className="text-neutral-600">{o.nome}</span>
+                <span className="font-medium text-neutral-900">{formatCurrency(o.valor)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {periodoComVariosMeses && porMes.length > 0 && (

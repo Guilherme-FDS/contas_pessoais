@@ -46,6 +46,8 @@ export interface ContaVariavel {
   valor_pago: number | null;
   valor_juros: number;
   pago_em: string | null;
+  recorrente: boolean;
+  recorrencia_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
