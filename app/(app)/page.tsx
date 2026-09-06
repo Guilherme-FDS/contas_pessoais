@@ -328,42 +328,31 @@ export default function DashboardPage() {
     .reduce((acc, n) => acc + n.valor, 0);
 
   // ===== Indicadores do mês navegado (falta pagar x já pago) =====
-  let totalFixasPago = 0;
+  // "Falta pagar" olha a competência: o que vence neste mês e ainda está aberto.
   let totalFixasFalta = 0;
   for (const f of fixasAtivas) {
-    const payment = fixasPagamentos.find(
-      (p) => p.conta_fixa_id === f.id && p.mes === selectedMonth && p.pago
-    );
-    if (payment) {
-      totalFixasPago += Number(payment.valor_pago ?? f.valor) + Number(payment.valor_juros ?? 0);
-    } else {
-      totalFixasFalta += Number(f.valor);
-    }
+    if (!isPaidFixa(f.id, selectedMonth)) totalFixasFalta += Number(f.valor);
   }
 
-  let totalVariaveisPago = 0;
   let totalVariaveisFalta = 0;
   for (const v of variaveisMes) {
-    if (v.pago) {
-      totalVariaveisPago += Number(v.valor_pago ?? v.valor) + Number(v.valor_juros ?? 0);
-    } else {
-      totalVariaveisFalta += Number(v.valor);
-    }
+    if (!v.pago) totalVariaveisFalta += Number(v.valor);
   }
 
   const futurasMarcadas = futuras.filter((f) => f.incluir_soma);
-  let totalFuturasPago = 0;
   let totalFuturasFalta = 0;
   for (const f of futurasMarcadas) {
-    if (f.status === "pago") {
-      totalFuturasPago += Number(f.valor_pago ?? f.valor) + Number(f.valor_juros ?? 0);
-    } else {
-      totalFuturasFalta += Number(f.valor);
-    }
+    if (f.status !== "pago") totalFuturasFalta += Number(f.valor);
   }
 
-  const totalPago = totalFixasPago + totalVariaveisPago + totalFuturasPago;
   const totalFalta = totalFixasFalta + totalVariaveisFalta + totalFuturasFalta;
+
+  // "Já pago" olha o caixa: o que saiu do bolso neste mês, pela data real do
+  // pagamento — mesma base do Saldo, então os dois números sempre batem.
+  // Somar por competência aqui contava futuras pagas em qualquer época, todo
+  // mês, pra sempre.
+  const saidaMes = pagamentosMes.reduce((acc, p) => acc + p.valor + p.valor_juros, 0);
+  const totalPago = saidaMes;
   const totalInvestido = investimentos.reduce((acc, i) => acc + Number(i.valor_investido), 0);
 
   const porCategoriaInvestimentos = investimentos.reduce<Record<string, number>>((acc, i) => {
@@ -372,7 +361,6 @@ export default function DashboardPage() {
   }, {});
 
   const saldoDisponivel = saldoMensal ? Number(saldoMensal.valor_inicial) : null;
-  const saidaMes = pagamentosMes.reduce((acc, p) => acc + p.valor + p.valor_juros, 0);
   const saldoAtual = saldoDisponivel !== null ? saldoDisponivel - saidaMes : null;
 
   return (
@@ -491,8 +479,16 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard label="Falta pagar no mês" value={totalFalta} />
-        <SummaryCard label="Já pago no mês" value={totalPago} />
+        <SummaryCard
+          label="Falta pagar no mês"
+          value={totalFalta}
+          hint="Contas que vencem neste mês e ainda estão em aberto"
+        />
+        <SummaryCard
+          label="Já pago no mês"
+          value={totalPago}
+          hint="Tudo que saiu do bolso neste mês, incluindo atrasados de outros meses"
+        />
         <SummaryCard
           label="Atrasado (meses anteriores)"
           value={totalAtrasado}
